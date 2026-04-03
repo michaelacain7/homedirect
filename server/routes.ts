@@ -262,6 +262,16 @@ export function registerRoutes(server: Server, app: Express) {
   app.post("/api/offers", (req, res) => {
     try {
       const data = insertOfferSchema.parse(req.body);
+
+      // Only allow one active offer per buyer per listing
+      const existingOffers = storage.getOffersByBuyer(data.buyerId);
+      const activeOffer = existingOffers.find(
+        o => o.listingId === data.listingId && ["pending", "countered"].includes(o.status)
+      );
+      if (activeOffer) {
+        return res.status(400).json({ message: "You already have an active offer on this listing. Please wait for a response or withdraw your existing offer." });
+      }
+
       const offer = storage.createOffer(data);
 
       // Auto-generate AI response

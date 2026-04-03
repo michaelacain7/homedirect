@@ -39,7 +39,10 @@ export default function ListingDetail() {
 
   const { data: listing, isLoading } = useQuery<Listing>({
     queryKey: ["/api/listings", params?.id],
-    queryFn: () => fetch(`/api/listings/${params?.id}`).then(r => r.json()),
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/listings/${params?.id}`);
+      return res.json();
+    },
     enabled: !!params?.id,
   });
 

@@ -35,14 +35,14 @@ export default function App() {
       <TooltipProvider>
         <ThemeProvider>
           <AuthProvider>
-            <div className="flex min-h-screen flex-col" data-testid="app-root">
-              <Header />
-              <main className="flex-1">
-                <Router hook={useHashLocation}>
+            <Router hook={useHashLocation}>
+              <div className="flex min-h-screen flex-col" data-testid="app-root">
+                <Header />
+                <main className="flex-1">
                   <AppRouter />
-                </Router>
-              </main>
-            </div>
+                </main>
+              </div>
+            </Router>
           </AuthProvider>
         </ThemeProvider>
         <Toaster />

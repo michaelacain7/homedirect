@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,7 +43,7 @@ export default function SearchPage() {
     queryKey: ["/api/listings", search, filters],
     queryFn: async () => {
       const q = buildQuery();
-      const res = await fetch(`/api/listings?${q}`);
+      const res = await apiRequest("GET", `/api/listings?${q}`);
       return res.json();
     },
   });
