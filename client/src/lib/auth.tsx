@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import type { User } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
 
 interface AuthContextType {
   user: Omit<User, "password"> | null;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; password: string; fullName: string; phone?: string; role?: string }) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -42,10 +44,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(userData);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await apiRequest("GET", `/api/users/${user.id}`);
+      const freshUser = await res.json();
+      setUser(freshUser);
+    } catch {
+      // silently fail — user state stays as-is
+    }
+  }, [user]);
+
   const logout = useCallback(() => setUser(null), []);
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, register, logout, refreshUser, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

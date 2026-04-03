@@ -13,14 +13,15 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
 
+  const isChaperone = user?.role === "chaperone";
   const navItems = [
     { href: "/", label: "Home", icon: Home },
     { href: "/search", label: "Search", icon: Search },
     { href: "/map", label: "Map", icon: Map },
     ...(isAuthenticated ? [
       { href: "/sell", label: "Sell", icon: Plus },
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      ...(user?.role === "chaperone" ? [{ href: "/chaperone-dashboard", label: "Chaperone", icon: UserCheck }] : []),
+      { href: isChaperone ? "/chaperone-dashboard" : "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      ...(isChaperone ? [{ href: "/chaperone-dashboard", label: "Chaperone", icon: UserCheck }] : []),
     ] : []),
   ];
 
@@ -58,7 +59,7 @@ export function Header() {
 
             {isAuthenticated ? (
               <div className="hidden items-center gap-2 md:flex">
-                <Link href="/dashboard">
+                <Link href={isChaperone ? "/chaperone-dashboard" : "/dashboard"}>
                   <Button variant="ghost" size="sm" data-testid="link-user-profile">
                     <User className="mr-1.5 h-4 w-4" />
                     {user?.fullName?.split(" ")[0]}

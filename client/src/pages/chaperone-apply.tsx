@@ -25,7 +25,7 @@ const AVAILABILITY_OPTIONS = [
 ];
 
 export default function ChaperoneApply() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [step, setStep] = useState(0);
@@ -33,10 +33,11 @@ export default function ChaperoneApply() {
   const [bgCheckStatus, setBgCheckStatus] = useState<"idle" | "processing" | "passed">("idle");
   const [applicationId, setApplicationId] = useState<number | null>(null);
 
+  const nameParts = (user?.fullName || "").split(" ");
   const [form, setForm] = useState({
     // Step 1
-    firstName: "",
-    lastName: "",
+    firstName: nameParts[0] || "",
+    lastName: nameParts.slice(1).join(" ") || "",
     email: user?.email || "",
     phone: user?.phone || "",
     address: "",
@@ -175,6 +176,8 @@ export default function ChaperoneApply() {
         completedTraining: true,
         status: "approved",
       }).then(r => r.json());
+      // Refresh user data so role updates to "chaperone" in the UI
+      await refreshUser();
       toast({ title: "Application submitted!", description: "Welcome to the HomeDirectAI chaperone program." });
       setLocation("/chaperone-dashboard");
     } catch (e: any) {
@@ -222,11 +225,11 @@ export default function ChaperoneApply() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>First Name</Label>
-              <Input value={form.firstName} onChange={e => update("firstName", e.target.value)} placeholder="Lisa" data-testid="input-first-name" />
+              <Input value={form.firstName} onChange={e => update("firstName", e.target.value)} placeholder="First name" data-testid="input-first-name" />
             </div>
             <div className="space-y-2">
               <Label>Last Name</Label>
-              <Input value={form.lastName} onChange={e => update("lastName", e.target.value)} placeholder="Rodriguez" data-testid="input-last-name" />
+              <Input value={form.lastName} onChange={e => update("lastName", e.target.value)} placeholder="Last name" data-testid="input-last-name" />
             </div>
           </div>
           <div className="space-y-2">
@@ -399,7 +402,7 @@ export default function ChaperoneApply() {
           </div>
           <div className="space-y-2">
             <Label>Account Holder Name</Label>
-            <Input value={form.bankAccountName} onChange={e => update("bankAccountName", e.target.value)} placeholder="Lisa Rodriguez" data-testid="input-bank-name" />
+            <Input value={form.bankAccountName} onChange={e => update("bankAccountName", e.target.value)} placeholder="Account holder name" data-testid="input-bank-name" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

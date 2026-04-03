@@ -601,6 +601,10 @@ export function registerRoutes(server: Server, app: Express) {
   app.patch("/api/chaperone/application/:id", (req, res) => {
     const app_ = storage.updateChaperoneApplication(parseInt(req.params.id), req.body);
     if (!app_) return res.status(404).json({ message: "Application not found" });
+    // When application is approved, update the user's role to chaperone
+    if (req.body.status === "approved" && app_.userId) {
+      storage.updateUser(app_.userId, { role: "chaperone" });
+    }
     res.json(app_);
   });
 
