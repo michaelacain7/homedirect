@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
 import { useState } from "react";
 import { AuthModal } from "./auth-modal";
-import { Home, Search, Plus, LayoutDashboard, Moon, Sun, User, LogOut, Menu, X } from "lucide-react";
+import { Home, Search, Plus, LayoutDashboard, Moon, Sun, User, LogOut, Menu, X, Map } from "lucide-react";
 
 export function Header() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -16,6 +16,7 @@ export function Header() {
   const navItems = [
     { href: "/", label: "Home", icon: Home },
     { href: "/search", label: "Search", icon: Search },
+    { href: "/map", label: "Map", icon: Map },
     ...(isAuthenticated ? [
       { href: "/sell", label: "Sell", icon: Plus },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },

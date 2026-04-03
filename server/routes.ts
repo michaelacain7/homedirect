@@ -215,6 +215,30 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(storage.getFeaturedListings());
   });
 
+  // Map bounds search (must be before :id route)
+  app.get("/api/listings/bounds", (req, res) => {
+    const { north, south, east, west, minPrice, maxPrice, minBeds, maxBeds, propertyType } = req.query;
+    if (!north || !south || !east || !west) {
+      return res.status(400).json({ message: "Bounds required: north, south, east, west" });
+    }
+    const allListings = storage.getListings({
+      status: "active",
+      minPrice: minPrice ? parseFloat(minPrice as string) : undefined,
+      maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
+      minBeds: minBeds ? parseInt(minBeds as string) : undefined,
+      maxBeds: maxBeds ? parseInt(maxBeds as string) : undefined,
+      propertyType: propertyType && propertyType !== "all" ? propertyType as string : undefined,
+    });
+    const bounded = allListings.filter(l =>
+      l.latitude && l.longitude &&
+      l.latitude >= parseFloat(south as string) &&
+      l.latitude <= parseFloat(north as string) &&
+      l.longitude >= parseFloat(west as string) &&
+      l.longitude <= parseFloat(east as string)
+    );
+    res.json(bounded);
+  });
+
   app.get("/api/listings/seller/:sellerId", (req, res) => {
     res.json(storage.getListingsBySeller(parseInt(req.params.sellerId)));
   });

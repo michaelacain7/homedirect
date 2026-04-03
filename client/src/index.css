@@ -286,3 +286,32 @@
     inset: -1px;
   }
 }
+
+/* Leaflet overrides for map search */
+.custom-price-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.leaflet-container {
+  font-family: inherit;
+  z-index: 0;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 8px !important;
+  min-width: 200px;
+}
+
+.leaflet-popup-close-button {
+  color: #666 !important;
+  font-size: 18px !important;
+  top: 4px !important;
+  right: 8px !important;
+}

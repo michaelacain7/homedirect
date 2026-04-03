@@ -13,6 +13,7 @@ import ListingDetail from "@/pages/listing-detail";
 import Sell from "@/pages/sell";
 import Dashboard from "@/pages/dashboard";
 import Negotiate from "@/pages/negotiate";
+import MapSearch from "@/pages/map-search";
 import NotFound from "@/pages/not-found";
 
 function AppRouter() {
@@ -20,6 +21,7 @@ function AppRouter() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/search" component={SearchPage} />
+      <Route path="/map" component={MapSearch} />
       <Route path="/listing/:id" component={ListingDetail} />
       <Route path="/sell" component={Sell} />
       <Route path="/dashboard" component={Dashboard} />

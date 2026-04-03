@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ListingCard } from "@/components/listing-card";
-import { Search, Bot, DollarSign, Users, FileCheck, ArrowRight, Shield, Clock, Sparkles } from "lucide-react";
+import { Search, Bot, DollarSign, Users, FileCheck, ArrowRight, Shield, Clock, Sparkles, MapPin } from "lucide-react";
 import type { Listing } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -180,6 +180,9 @@ export default function Home() {
             </Button>
             <Button variant="secondary" onClick={() => setLocation("/search")} data-testid="button-cta-search">
               Browse Listings
+            </Button>
+            <Button variant="outline" onClick={() => setLocation("/map")} data-testid="button-cta-map">
+              <MapPin className="mr-1.5 h-4 w-4" /> Explore Map
             </Button>
           </div>
         </div>
