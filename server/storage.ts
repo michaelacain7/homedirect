@@ -16,6 +16,125 @@ import {
 
 const sqlite = new Database("data.db");
 sqlite.pragma("journal_mode = WAL");
+
+// Auto-create tables if they don't exist (needed for fresh deploys like Railway)
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    phone TEXT,
+    role TEXT NOT NULL DEFAULT 'buyer',
+    avatar_url TEXT,
+    bio TEXT,
+    location TEXT,
+    is_verified INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seller_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    address TEXT NOT NULL,
+    city TEXT NOT NULL,
+    state TEXT NOT NULL,
+    zip TEXT NOT NULL,
+    price REAL NOT NULL,
+    bedrooms INTEGER NOT NULL,
+    bathrooms REAL NOT NULL,
+    sqft INTEGER NOT NULL,
+    lot_size REAL,
+    year_built INTEGER,
+    property_type TEXT NOT NULL DEFAULT 'single_family',
+    status TEXT NOT NULL DEFAULT 'active',
+    images TEXT NOT NULL DEFAULT '[]',
+    features TEXT NOT NULL DEFAULT '[]',
+    latitude REAL,
+    longitude REAL,
+    mls_number TEXT,
+    hoa_fee REAL,
+    tax_amount REAL,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS offers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    buyer_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    message TEXT,
+    contingencies TEXT NOT NULL DEFAULT '[]',
+    closing_date TEXT,
+    counter_amount REAL,
+    counter_message TEXT,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS walkthroughs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    buyer_id INTEGER NOT NULL,
+    chaperone_id INTEGER,
+    scheduled_date TEXT NOT NULL,
+    scheduled_time TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'requested',
+    chaperone_payment REAL NOT NULL DEFAULT 20,
+    buyer_notes TEXT,
+    chaperone_notes TEXT,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    offer_id INTEGER,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    content TEXT,
+    signed_by_buyer INTEGER DEFAULT 0,
+    signed_by_seller INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    offer_id INTEGER NOT NULL,
+    sender_id INTEGER,
+    sender_type TEXT NOT NULL DEFAULT 'user',
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    offer_id INTEGER NOT NULL,
+    buyer_id INTEGER NOT NULL,
+    seller_id INTEGER NOT NULL,
+    sale_price REAL NOT NULL,
+    platform_fee REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'in_progress',
+    closing_date TEXT,
+    escrow_status TEXT DEFAULT 'not_started',
+    title_status TEXT DEFAULT 'not_started',
+    inspection_status TEXT DEFAULT 'not_started',
+    appraisal_status TEXT DEFAULT 'not_started',
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS saved_searches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    filters TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS favorites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    listing_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ''
+  );
+`);
+
 export const db = drizzle(sqlite);
 
 export interface IStorage {
