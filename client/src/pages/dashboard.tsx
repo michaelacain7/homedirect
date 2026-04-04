@@ -1,15 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ListingCard } from "@/components/listing-card";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Home, FileText, MessageSquare, Eye, DollarSign, Bot, Clock, ArrowRight, Plus, MapPin,
-  CheckCircle2, Circle, AlertCircle
+  CheckCircle2, Circle, AlertCircle, Check, X, MessageCircle, Edit, ExternalLink, Loader2
 } from "lucide-react";
 import type { Listing, Offer, Walkthrough, Transaction, Document as Doc } from "@shared/schema";
 
@@ -29,11 +35,101 @@ const statusColors: Record<string, string> = {
   completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
   in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   draft: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+  withdrawn: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
 };
+
+// Counter offer dialog
+function CounterOfferDialog({
+  offer,
+  open,
+  onClose,
+  onDone,
+}: {
+  offer: Offer;
+  open: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [message, setMessage] = useState("");
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  const counterMutation = useMutation({
+    mutationFn: async () => {
+      // Update offer status to "countered" with counter amount/message
+      const res = await apiRequest("PATCH", `/api/offers/${offer.id}`, {
+        status: "countered",
+        counterAmount: parseFloat(amount),
+        counterMessage: message,
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed");
+      // Also post a message in the negotiation chat
+      await apiRequest("POST", "/api/messages", {
+        offerId: offer.id,
+        senderId: user?.id,
+        senderType: "user",
+        content: `Counter offer: ${formatPrice(parseFloat(amount))}. ${message}`,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Counter offer sent", description: `Counter of ${formatPrice(parseFloat(amount))} sent to buyer.` });
+      onDone();
+      onClose();
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Send Counter Offer</DialogTitle>
+          <DialogDescription>
+            Current offer: {formatPrice(offer.amount)}. Enter your counter amount and message.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Counter Amount ($)</Label>
+            <Input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={offer.amount.toString()}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Message (optional)</Label>
+            <Textarea
+              rows={3}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Thank you for your offer. We'd like to counter at..."
+            />
+          </div>
+          <Button
+            className="w-full"
+            disabled={!amount || counterMutation.isPending}
+            onClick={() => counterMutation.mutate()}
+          >
+            {counterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Send Counter
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [counterOffer, setCounterOffer] = useState<Offer | null>(null);
 
   const { data: myListings = [] } = useQuery<Listing[]>({
     queryKey: ["/api/listings/seller", user?.id],
@@ -45,6 +141,13 @@ export default function Dashboard() {
     queryKey: ["/api/offers/buyer", user?.id],
     queryFn: () => apiRequest("GET", `/api/offers/buyer/${user?.id}`).then(r => r.json()),
     enabled: !!user,
+  });
+
+  // Seller-side: offers on MY listings
+  const { data: sellerOffers = [] } = useQuery<Offer[]>({
+    queryKey: ["/api/offers/seller", user?.id],
+    queryFn: () => apiRequest("GET", `/api/offers/seller/${user?.id}`).then(r => r.json()),
+    enabled: !!user && (user.role === "seller" || user.role === "admin"),
   });
 
   const { data: myWalkthroughs = [] } = useQuery<Walkthrough[]>({
@@ -65,6 +168,41 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
+  // Seller transactions
+  const { data: sellerTransactions = [] } = useQuery<Transaction[]>({
+    queryKey: ["/api/transactions/seller", user?.id],
+    queryFn: () => apiRequest("GET", `/api/transactions/seller/${user?.id}`).then(r => r.json()),
+    enabled: !!user && (user.role === "seller" || user.role === "admin"),
+  });
+
+  const updateOfferStatus = useMutation({
+    mutationFn: async ({ offerId, status }: { offerId: number; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/offers/${offerId}`, { status });
+      if (!res.ok) throw new Error((await res.json()).message || "Update failed");
+      return res.json();
+    },
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/offers/seller", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transactions/seller", user?.id] });
+      toast({
+        title: status === "accepted" ? "Offer accepted!" : "Offer rejected",
+        description:
+          status === "accepted"
+            ? "A transaction has been created. Check the Transactions tab."
+            : "The buyer has been notified.",
+      });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    },
+  });
+
+  // All transactions (buyer + seller combined for display)
+  const allTransactions = [
+    ...myTransactions,
+    ...sellerTransactions.filter(st => !myTransactions.find(bt => bt.id === st.id)),
+  ];
+
   if (!user) {
     return (
       <div className="py-20 text-center">
@@ -75,6 +213,8 @@ export default function Dashboard() {
     );
   }
 
+  const isSeller = user.role === "seller" || user.role === "admin";
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-6" data-testid="page-dashboard">
       <div className="mb-6 flex items-center justify-between">
@@ -82,7 +222,7 @@ export default function Dashboard() {
           <h1 className="text-lg font-semibold" data-testid="text-welcome">Welcome, {user.fullName.split(" ")[0]}</h1>
           <p className="text-sm text-muted-foreground capitalize">{user.role} Dashboard</p>
         </div>
-        {(user.role === "seller" || user.role === "admin") && (
+        {isSeller && (
           <Button size="sm" onClick={() => setLocation("/sell")} data-testid="button-new-listing">
             <Plus className="mr-1 h-4 w-4" /> New Listing
           </Button>
@@ -98,8 +238,8 @@ export default function Dashboard() {
         </Card>
         <Card className="p-4" data-testid="stat-offers">
           <DollarSign className="mb-1 h-4 w-4 text-muted-foreground" />
-          <div className="text-xl font-bold">{myOffers.length}</div>
-          <p className="text-xs text-muted-foreground">Active Offers</p>
+          <div className="text-xl font-bold">{isSeller ? sellerOffers.length : myOffers.length}</div>
+          <p className="text-xs text-muted-foreground">{isSeller ? "Received Offers" : "Active Offers"}</p>
         </Card>
         <Card className="p-4" data-testid="stat-walkthroughs">
           <Eye className="mb-1 h-4 w-4 text-muted-foreground" />
@@ -108,21 +248,25 @@ export default function Dashboard() {
         </Card>
         <Card className="p-4" data-testid="stat-transactions">
           <FileText className="mb-1 h-4 w-4 text-muted-foreground" />
-          <div className="text-xl font-bold">{myTransactions.length}</div>
+          <div className="text-xl font-bold">{allTransactions.length}</div>
           <p className="text-xs text-muted-foreground">Transactions</p>
         </Card>
       </div>
 
-      <Tabs defaultValue={user.role === "chaperone" ? "gigs" : "offers"} data-testid="tabs-dashboard">
-        <TabsList>
-          {user.role !== "chaperone" && <TabsTrigger value="offers">Offers</TabsTrigger>}
+      <Tabs
+        defaultValue={user.role === "chaperone" ? "gigs" : isSeller ? "seller-offers" : "offers"}
+        data-testid="tabs-dashboard"
+      >
+        <TabsList className="flex-wrap">
+          {user.role !== "chaperone" && !isSeller && <TabsTrigger value="offers">My Offers</TabsTrigger>}
+          {isSeller && <TabsTrigger value="seller-offers">Received Offers</TabsTrigger>}
           {user.role !== "chaperone" && <TabsTrigger value="walkthroughs">Walkthroughs</TabsTrigger>}
-          {(user.role === "seller" || user.role === "admin") && <TabsTrigger value="listings">My Listings</TabsTrigger>}
+          {isSeller && <TabsTrigger value="listings">My Listings</TabsTrigger>}
           {user.role === "chaperone" && <TabsTrigger value="gigs">Available Gigs</TabsTrigger>}
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
         </TabsList>
 
-        {/* Offers Tab */}
+        {/* Buyer Offers Tab */}
         <TabsContent value="offers" className="mt-4">
           {myOffers.length === 0 ? (
             <div className="py-12 text-center">
@@ -142,7 +286,14 @@ export default function Dashboard() {
                       <span className="text-sm font-medium">Offer: {formatPrice(offer.amount)}</span>
                       <Badge variant="outline" className={statusColors[offer.status]}>{offer.status}</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">Listing #{offer.listingId} - {offer.createdAt?.split("T")[0]}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Listing #{offer.listingId} — {offer.createdAt?.split("T")[0]}
+                    </p>
+                    {offer.status === "countered" && offer.counterAmount && (
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        Counter: {formatPrice(offer.counterAmount)} {offer.counterMessage ? `— "${offer.counterMessage}"` : ""}
+                      </p>
+                    )}
                   </div>
                   <Link href={`/negotiate/${offer.id}`}>
                     <Button size="sm" variant="ghost">
@@ -151,6 +302,91 @@ export default function Dashboard() {
                   </Link>
                 </Card>
               ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Seller Received Offers Tab */}
+        <TabsContent value="seller-offers" className="mt-4">
+          {sellerOffers.length === 0 ? (
+            <div className="py-12 text-center">
+              <DollarSign className="mx-auto mb-2 h-6 w-6 text-muted-foreground/40" />
+              <p className="text-sm font-medium">No offers received yet</p>
+              <p className="text-xs text-muted-foreground">Buyers will submit offers on your listings here</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {sellerOffers.map((offer) => {
+                const isActionable = offer.status === "pending" || offer.status === "countered";
+                return (
+                  <Card key={offer.id} className="p-4" data-testid={`card-seller-offer-${offer.id}`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold">{formatPrice(offer.amount)}</span>
+                          <Badge variant="outline" className={statusColors[offer.status]}>{offer.status}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Listing #{offer.listingId} — Received {offer.createdAt?.split("T")[0]}
+                        </p>
+                        {offer.message && (
+                          <p className="mt-1.5 text-xs text-foreground/80 border-l-2 border-muted pl-2 italic">
+                            "{offer.message}"
+                          </p>
+                        )}
+                        {offer.closingDate && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Proposed closing: {offer.closingDate}
+                          </p>
+                        )}
+                      </div>
+                      {isActionable ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => updateOfferStatus.mutate({ offerId: offer.id, status: "accepted" })}
+                            disabled={updateOfferStatus.isPending}
+                            data-testid={`button-accept-${offer.id}`}
+                          >
+                            <Check className="mr-1 h-3 w-3" /> Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => updateOfferStatus.mutate({ offerId: offer.id, status: "rejected" })}
+                            disabled={updateOfferStatus.isPending}
+                            data-testid={`button-reject-${offer.id}`}
+                          >
+                            <X className="mr-1 h-3 w-3" /> Reject
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setCounterOffer(offer)}
+                            data-testid={`button-counter-${offer.id}`}
+                          >
+                            <MessageCircle className="mr-1 h-3 w-3" /> Counter
+                          </Button>
+                          <Link href={`/negotiate/${offer.id}`}>
+                            <Button size="sm" variant="ghost">
+                              <MessageSquare className="mr-1 h-3 w-3" /> Chat
+                            </Button>
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Link href={`/negotiate/${offer.id}`}>
+                            <Button size="sm" variant="ghost">
+                              <MessageSquare className="mr-1 h-3 w-3" /> Chat
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -185,7 +421,7 @@ export default function Dashboard() {
           )}
         </TabsContent>
 
-        {/* Listings Tab */}
+        {/* My Listings Tab */}
         <TabsContent value="listings" className="mt-4">
           {myListings.length === 0 ? (
             <div className="py-12 text-center">
@@ -199,7 +435,16 @@ export default function Dashboard() {
           ) : (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {myListings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
+                <div key={listing.id} className="relative group">
+                  <ListingCard listing={listing} />
+                  <div className="absolute top-2 right-2 hidden group-hover:flex gap-1">
+                    <Link href={`/edit-listing/${listing.id}`}>
+                      <Button size="sm" className="h-7 px-2 text-xs shadow-md">
+                        <Edit className="mr-1 h-3 w-3" /> Edit
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -240,7 +485,7 @@ export default function Dashboard() {
 
         {/* Transactions Tab */}
         <TabsContent value="transactions" className="mt-4">
-          {myTransactions.length === 0 ? (
+          {allTransactions.length === 0 ? (
             <div className="py-12 text-center">
               <FileText className="mx-auto mb-2 h-6 w-6 text-muted-foreground/40" />
               <p className="text-sm font-medium">No active transactions</p>
@@ -248,31 +493,44 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {myTransactions.map((txn) => (
+              {allTransactions.map((txn) => (
                 <Card key={txn.id} className="p-4" data-testid={`card-transaction-${txn.id}`}>
                   <div className="flex items-center justify-between mb-3">
-                    <div>
+                    <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">Transaction #{txn.id}</span>
-                      <Badge variant="outline" className={`ml-2 ${statusColors[txn.status]}`}>{txn.status}</Badge>
+                      <Badge variant="outline" className={statusColors[txn.status]}>{txn.status}</Badge>
+                      {txn.buyerId === user.id && (
+                        <Badge variant="secondary" className="text-[10px]">Buyer</Badge>
+                      )}
+                      {txn.sellerId === user.id && (
+                        <Badge variant="secondary" className="text-[10px]">Seller</Badge>
+                      )}
                     </div>
-                    <span className="text-sm font-semibold">{formatPrice(txn.salePrice)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">{formatPrice(txn.salePrice)}</span>
+                      <Link href={`/transaction/${txn.id}`}>
+                        <Button size="sm" variant="ghost">
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
                     <div className="flex items-center gap-1.5">
                       {txn.escrowStatus === "not_started" ? <Circle className="h-3 w-3 text-muted-foreground" /> : txn.escrowStatus === "disbursed" ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <AlertCircle className="h-3 w-3 text-blue-500" />}
-                      <span>Escrow: {txn.escrowStatus?.replace("_", " ")}</span>
+                      <span>Escrow: {txn.escrowStatus?.replace(/_/g, " ")}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {txn.titleStatus === "not_started" ? <Circle className="h-3 w-3 text-muted-foreground" /> : txn.titleStatus === "clear" ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <AlertCircle className="h-3 w-3 text-blue-500" />}
-                      <span>Title: {txn.titleStatus?.replace("_", " ")}</span>
+                      <span>Title: {txn.titleStatus?.replace(/_/g, " ")}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {txn.inspectionStatus === "not_started" ? <Circle className="h-3 w-3 text-muted-foreground" /> : <CheckCircle2 className="h-3 w-3 text-green-500" />}
-                      <span>Inspection: {txn.inspectionStatus?.replace("_", " ")}</span>
+                      <span>Inspection: {txn.inspectionStatus?.replace(/_/g, " ")}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {txn.appraisalStatus === "not_started" ? <Circle className="h-3 w-3 text-muted-foreground" /> : <CheckCircle2 className="h-3 w-3 text-green-500" />}
-                      <span>Appraisal: {txn.appraisalStatus?.replace("_", " ")}</span>
+                      <span>Appraisal: {txn.appraisalStatus?.replace(/_/g, " ")}</span>
                     </div>
                   </div>
                   <div className="mt-2 flex justify-between text-xs text-muted-foreground">
@@ -285,6 +543,18 @@ export default function Dashboard() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Counter Offer Dialog */}
+      {counterOffer && (
+        <CounterOfferDialog
+          offer={counterOffer}
+          open={!!counterOffer}
+          onClose={() => setCounterOffer(null)}
+          onDone={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/offers/seller", user?.id] });
+          }}
+        />
+      )}
     </div>
   );
 }

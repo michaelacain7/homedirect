@@ -1,10 +1,15 @@
 import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
+import MemoryStore from "memorystore";
+import { passport } from "./auth";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
 const app = express();
 const httpServer = createServer(app);
+
+const SessionStore = MemoryStore(session);
 
 declare module "http" {
   interface IncomingMessage {
@@ -21,6 +26,24 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// Session setup (must be before passport)
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "homedirect-session-secret-change-in-prod",
+    resave: false,
+    saveUninitialized: false,
+    store: new SessionStore({ checkPeriod: 86400000 }),
+    cookie: { secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 },
+  })
+);
+
+// Passport setup
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Serve uploaded files statically
+app.use("/uploads", express.static("uploads"));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

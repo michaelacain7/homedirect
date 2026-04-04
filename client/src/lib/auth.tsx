@@ -1,25 +1,42 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import type { User } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
 
 interface AuthContextType {
   user: Omit<User, "password"> | null;
   login: (email: string, password: string) => Promise<void>;
   register: (data: { email: string; password: string; fullName: string; phone?: string; role?: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Omit<User, "password"> | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Restore session on app load
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        }
+      })
+      .catch(() => {
+        // No session — that's fine
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
     });
     if (!res.ok) {
@@ -34,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(data),
     });
     if (!res.ok) {
@@ -45,20 +63,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    if (!user) return;
     try {
-      const res = await apiRequest("GET", `/api/users/${user.id}`);
-      const freshUser = await res.json();
-      setUser(freshUser);
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      if (res.ok) {
+        const freshUser = await res.json();
+        setUser(freshUser);
+      }
     } catch {
       // silently fail — user state stays as-is
     }
-  }, [user]);
+  }, []);
 
-  const logout = useCallback(() => setUser(null), []);
+  const logout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // ignore errors
+    }
+    setUser(null);
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, refreshUser, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, register, logout, refreshUser, isAuthenticated: !!user, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

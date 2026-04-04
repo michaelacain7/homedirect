@@ -2,9 +2,104 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { AuthModal } from "./auth-modal";
-import { Home, Search, Plus, LayoutDashboard, Moon, Sun, User, LogOut, Menu, X, Map, UserCheck } from "lucide-react";
+import { Home, Search, Plus, LayoutDashboard, Moon, Sun, User, LogOut, Menu, X, Map, UserCheck, Bell, Shield } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Badge } from "@/components/ui/badge";
+import type { Notification } from "@shared/schema";
+
+function NotificationBell() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: notifications = [] } = useQuery<Notification[]>({
+    queryKey: ["/api/notifications"],
+    queryFn: () => apiRequest("GET", "/api/notifications").then(r => r.json()),
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const markRead = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/notifications/${id}/read`).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/notifications"] }),
+  });
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  if (!user) return null;
+
+  return (
+    <div ref={ref} className="relative">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="relative"
+        onClick={() => setOpen(!open)}
+        data-testid="button-notifications"
+      >
+        <Bell className="h-4 w-4" />
+        {unreadCount > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </Button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border bg-popover shadow-lg" data-testid="notifications-dropdown">
+          <div className="flex items-center justify-between border-b px-3 py-2">
+            <span className="text-sm font-medium">Notifications</span>
+            {unreadCount > 0 && (
+              <Badge variant="secondary" className="text-[10px]">{unreadCount} new</Badge>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <p className="px-3 py-6 text-center text-xs text-muted-foreground">No notifications yet</p>
+            ) : (
+              notifications.slice(0, 15).map(n => (
+                <button
+                  key={n.id}
+                  className={`w-full px-3 py-2.5 text-left hover:bg-muted transition-colors border-b last:border-b-0 ${!n.read ? "bg-primary/5" : ""}`}
+                  onClick={() => {
+                    if (!n.read) markRead.mutate(n.id);
+                    setOpen(false);
+                  }}
+                >
+                  <div className="flex items-start gap-2">
+                    {!n.read && <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+                    <div className={!n.read ? "" : "pl-3.5"}>
+                      <p className="text-xs font-medium">{n.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.message}</p>
+                      {n.createdAt && (
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {new Date(n.createdAt).toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Header() {
   const { user, logout, isAuthenticated } = useAuth();
@@ -14,6 +109,8 @@ export function Header() {
   const [location] = useLocation();
 
   const isChaperone = user?.role === "chaperone";
+  const isAdmin = user?.role === "admin";
+
   const navItems = [
     { href: "/", label: "Home", icon: Home },
     { href: "/search", label: "Search", icon: Search },
@@ -22,6 +119,7 @@ export function Header() {
       { href: "/sell", label: "Sell", icon: Plus },
       { href: isChaperone ? "/chaperone-dashboard" : "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       ...(isChaperone ? [{ href: "/chaperone-dashboard", label: "Chaperone", icon: UserCheck }] : []),
+      ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
     ] : []),
   ];
 
@@ -56,6 +154,8 @@ export function Header() {
             <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme-toggle">
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
+
+            {isAuthenticated && <NotificationBell />}
 
             {isAuthenticated ? (
               <div className="hidden items-center gap-2 md:flex">

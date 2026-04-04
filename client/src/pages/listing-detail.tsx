@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Bed, Bath, Maximize, MapPin, Calendar, DollarSign, Home as HomeIcon,
-  ArrowLeft, Heart, Share2, Bot, ChevronLeft, ChevronRight, Clock, Tag
+  ArrowLeft, Heart, Share2, Bot, ChevronLeft, ChevronRight, Clock, Tag, CreditCard, CheckCircle
 } from "lucide-react";
 import type { Listing } from "@shared/schema";
 
@@ -36,6 +36,9 @@ export default function ListingDetail() {
   const [wtDate, setWtDate] = useState("");
   const [wtTime, setWtTime] = useState("");
   const [wtNotes, setWtNotes] = useState("");
+  const [wtStep, setWtStep] = useState<"form" | "payment" | "done">("form");
+  const [wtPaymentProcessing, setWtPaymentProcessing] = useState(false);
+  const [wtTestMode, setWtTestMode] = useState(true);
 
   const { data: listing, isLoading } = useQuery<Listing>({
     queryKey: ["/api/listings", params?.id],
@@ -86,17 +89,46 @@ export default function ListingDetail() {
     } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
   };
 
-  const submitWalkthrough = async () => {
+  // Step 1: Advance from form to payment
+  const proceedToPayment = () => {
     if (!user) return toast({ title: "Sign in required", description: "Please sign in to schedule a walkthrough.", variant: "destructive" });
+    setWtStep("payment");
+  };
+
+  // Step 2: Process payment then create walkthrough
+  const submitWalkthrough = async () => {
+    if (!user) return;
+    setWtPaymentProcessing(true);
     try {
-      await apiRequest("POST", "/api/walkthroughs", {
+      // First create the walkthrough record
+      const wtRes = await apiRequest("POST", "/api/walkthroughs", {
         listingId: listing.id, buyerId: user.id,
         scheduledDate: wtDate, scheduledTime: wtTime,
         buyerNotes: wtNotes, chaperonePayment: 20,
       });
-      toast({ title: "Walkthrough requested", description: "A local chaperone will be assigned soon. Cost: $20." });
-      setShowWalkthrough(false);
-    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+      const walkthrough = await wtRes.json();
+
+      // Then process payment
+      const payRes = await apiRequest("POST", "/api/payments/walkthrough", {
+        walkthroughId: walkthrough.id,
+        userId: user.id,
+      });
+      const payData = await payRes.json();
+      setWtTestMode(payData.testMode ?? true);
+      setWtStep("done");
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setWtPaymentProcessing(false);
+    }
+  };
+
+  const closeWalkthrough = () => {
+    setShowWalkthrough(false);
+    setWtStep("form");
+    setWtDate("");
+    setWtTime("");
+    setWtNotes("");
   };
 
   return (
@@ -325,38 +357,110 @@ export default function ListingDetail() {
       </Dialog>
 
       {/* Walkthrough Modal */}
-      <Dialog open={showWalkthrough} onOpenChange={setShowWalkthrough}>
+      <Dialog open={showWalkthrough} onOpenChange={closeWalkthrough}>
         <DialogContent data-testid="dialog-walkthrough">
           <DialogHeader>
-            <DialogTitle>Schedule a Walkthrough</DialogTitle>
+            <DialogTitle>
+              {wtStep === "form" && "Schedule a Walkthrough"}
+              {wtStep === "payment" && "Confirm Payment"}
+              {wtStep === "done" && "Walkthrough Confirmed!"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              A local chaperone will meet you at the property to guide you through. Cost: $20.
-            </p>
-            <div className="space-y-2">
-              <Label>Preferred Date</Label>
-              <Input type="date" value={wtDate} onChange={e => setWtDate(e.target.value)} data-testid="input-wt-date" />
+
+          {wtStep === "form" && (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                A local chaperone will meet you at the property to guide you through. Cost: <strong>$20.00</strong>.
+              </p>
+              <div className="space-y-2">
+                <Label>Preferred Date</Label>
+                <Input type="date" value={wtDate} onChange={e => setWtDate(e.target.value)} data-testid="input-wt-date" />
+              </div>
+              <div className="space-y-2">
+                <Label>Preferred Time</Label>
+                <Select value={wtTime} onValueChange={setWtTime}>
+                  <SelectTrigger data-testid="select-wt-time"><SelectValue placeholder="Select time" /></SelectTrigger>
+                  <SelectContent>
+                    {["9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM"].map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Notes for Chaperone (optional)</Label>
+                <Textarea placeholder="Any specific areas you'd like to see?" value={wtNotes} onChange={e => setWtNotes(e.target.value)} data-testid="input-wt-notes" />
+              </div>
+              <Button className="w-full" onClick={proceedToPayment} disabled={!wtDate || !wtTime} data-testid="button-proceed-payment">
+                Continue to Payment
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label>Preferred Time</Label>
-              <Select value={wtTime} onValueChange={setWtTime}>
-                <SelectTrigger data-testid="select-wt-time"><SelectValue placeholder="Select time" /></SelectTrigger>
-                <SelectContent>
-                  {["9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM"].map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          )}
+
+          {wtStep === "payment" && (
+            <div className="space-y-4">
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                  Walkthrough Fee
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Date</span>
+                  <span>{wtDate} at {wtTime}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Property</span>
+                  <span className="text-right max-w-[200px] truncate">{listing.address}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2 font-semibold">
+                  <span>Total</span>
+                  <span className="text-primary">$20.00</span>
+                </div>
+              </div>
+
+              <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+                <strong>Test Mode — Payment Simulated</strong><br />
+                In production, this would use Stripe to securely collect your payment. The $20 is held until the chaperone completes the showing, then transferred to them.
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setWtStep("form")}>
+                  Back
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={submitWalkthrough}
+                  disabled={wtPaymentProcessing}
+                  data-testid="button-submit-walkthrough"
+                >
+                  {wtPaymentProcessing ? "Processing..." : "Confirm & Pay $20"}
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Notes for Chaperone (optional)</Label>
-              <Textarea placeholder="Any specific areas you'd like to see?" value={wtNotes} onChange={e => setWtNotes(e.target.value)} data-testid="input-wt-notes" />
+          )}
+
+          {wtStep === "done" && (
+            <div className="space-y-4 text-center py-2">
+              <CheckCircle className="mx-auto h-12 w-12 text-primary" />
+              <div>
+                <p className="font-semibold">Walkthrough Booked!</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {wtDate} at {wtTime}
+                </p>
+              </div>
+              {wtTestMode && (
+                <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+                  Test Mode — Payment of $20.00 simulated successfully
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                A chaperone will be assigned soon. You'll receive a notification when confirmed.
+              </p>
+              <Button className="w-full" onClick={closeWalkthrough}>
+                Done
+              </Button>
             </div>
-            <Button className="w-full" onClick={submitWalkthrough} disabled={!wtDate || !wtTime} data-testid="button-submit-walkthrough">
-              Schedule Walkthrough ($20)
-            </Button>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -8,8 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { ListingCard } from "@/components/listing-card";
-import { Search as SearchIcon, SlidersHorizontal, X } from "lucide-react";
+import { Search as SearchIcon, SlidersHorizontal, X, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Listing } from "@shared/schema";
+
+interface ListingsResponse {
+  listings: Listing[];
+  total: number;
+}
 
 export default function SearchPage() {
   const queryString = useSearch();
@@ -18,6 +23,10 @@ export default function SearchPage() {
 
   const [search, setSearch] = useState(initialQ);
   const [showFilters, setShowFilters] = useState(false);
+  const [sort, setSort] = useState("newest");
+  const [page, setPage] = useState(1);
+  const LIMIT = 20;
+
   const [filters, setFilters] = useState({
     minPrice: "", maxPrice: "", minBeds: "", maxBeds: "",
     minBaths: "", maxBaths: "", minSqft: "", maxSqft: "",
@@ -36,11 +45,14 @@ export default function SearchPage() {
     if (filters.minSqft) p.set("minSqft", filters.minSqft);
     if (filters.maxSqft) p.set("maxSqft", filters.maxSqft);
     if (filters.propertyType && filters.propertyType !== "all") p.set("propertyType", filters.propertyType);
+    p.set("sort", sort);
+    p.set("page", page.toString());
+    p.set("limit", LIMIT.toString());
     return p.toString();
   };
 
-  const { data: listings = [], isLoading } = useQuery<Listing[]>({
-    queryKey: ["/api/listings", search, filters],
+  const { data, isLoading } = useQuery<ListingsResponse>({
+    queryKey: ["/api/listings", search, filters, sort, page],
     queryFn: async () => {
       const q = buildQuery();
       const res = await apiRequest("GET", `/api/listings?${q}`);
@@ -48,9 +60,19 @@ export default function SearchPage() {
     },
   });
 
+  const listings = data?.listings ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+
   const clearFilters = () => {
     setFilters({ minPrice: "", maxPrice: "", minBeds: "", maxBeds: "", minBaths: "", maxBaths: "", minSqft: "", maxSqft: "", propertyType: "all" });
     setSearch("");
+    setPage(1);
+  };
+
+  const handleSortChange = (val: string) => {
+    setSort(val);
+    setPage(1);
   };
 
   const hasActiveFilters = Object.values(filters).some(v => v && v !== "all") || search;
@@ -66,7 +88,7 @@ export default function SearchPage() {
               placeholder="Search by city, address, or ZIP..."
               className="pl-9"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               data-testid="input-search"
             />
           </div>
@@ -93,15 +115,15 @@ export default function SearchPage() {
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
               <div className="space-y-1.5">
                 <Label className="text-xs">Min Price</Label>
-                <Input type="number" placeholder="$0" value={filters.minPrice} onChange={e => setFilters(f => ({ ...f, minPrice: e.target.value }))} data-testid="input-min-price" />
+                <Input type="number" placeholder="$0" value={filters.minPrice} onChange={e => { setFilters(f => ({ ...f, minPrice: e.target.value })); setPage(1); }} data-testid="input-min-price" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Max Price</Label>
-                <Input type="number" placeholder="Any" value={filters.maxPrice} onChange={e => setFilters(f => ({ ...f, maxPrice: e.target.value }))} data-testid="input-max-price" />
+                <Input type="number" placeholder="Any" value={filters.maxPrice} onChange={e => { setFilters(f => ({ ...f, maxPrice: e.target.value })); setPage(1); }} data-testid="input-max-price" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Min Beds</Label>
-                <Select value={filters.minBeds || "any"} onValueChange={v => setFilters(f => ({ ...f, minBeds: v === "any" ? "" : v }))}>
+                <Select value={filters.minBeds || "any"} onValueChange={v => { setFilters(f => ({ ...f, minBeds: v === "any" ? "" : v })); setPage(1); }}>
                   <SelectTrigger data-testid="select-min-beds"><SelectValue placeholder="Any" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="any">Any</SelectItem>
@@ -115,7 +137,7 @@ export default function SearchPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Min Baths</Label>
-                <Select value={filters.minBaths || "any"} onValueChange={v => setFilters(f => ({ ...f, minBaths: v === "any" ? "" : v }))}>
+                <Select value={filters.minBaths || "any"} onValueChange={v => { setFilters(f => ({ ...f, minBaths: v === "any" ? "" : v })); setPage(1); }}>
                   <SelectTrigger data-testid="select-min-baths"><SelectValue placeholder="Any" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="any">Any</SelectItem>
@@ -128,7 +150,7 @@ export default function SearchPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Property Type</Label>
-                <Select value={filters.propertyType} onValueChange={v => setFilters(f => ({ ...f, propertyType: v }))}>
+                <Select value={filters.propertyType} onValueChange={v => { setFilters(f => ({ ...f, propertyType: v })); setPage(1); }}>
                   <SelectTrigger data-testid="select-property-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Types</SelectItem>
@@ -146,10 +168,25 @@ export default function SearchPage() {
 
       {/* Results */}
       <div className="mx-auto max-w-7xl px-4 py-6">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground" data-testid="text-results-count">
-            {isLoading ? "Searching..." : `${listings.length} ${listings.length === 1 ? "home" : "homes"} found`}
+            {isLoading ? "Searching..." : `${total} ${total === 1 ? "home" : "homes"} found`}
           </p>
+          {/* Sort */}
+          <div className="flex items-center gap-2">
+            <Label className="text-xs whitespace-nowrap">Sort by</Label>
+            <Select value={sort} onValueChange={handleSortChange}>
+              <SelectTrigger className="h-8 w-36 text-xs" data-testid="select-sort">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="price_asc">Price: Low to High</SelectItem>
+                <SelectItem value="price_desc">Price: High to Low</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {isLoading ? (
@@ -171,11 +208,40 @@ export default function SearchPage() {
             <p className="text-xs text-muted-foreground">Try adjusting your search or filters</p>
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {listings.map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {listings.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-8 flex items-center justify-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  data-testid="button-prev-page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  data-testid="button-next-page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

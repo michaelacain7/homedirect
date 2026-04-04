@@ -186,7 +186,8 @@ export const chaperoneApplications = sqliteTable("chaperone_applications", {
   latitude: real("latitude"),
   longitude: real("longitude"),
   dateOfBirth: text("date_of_birth").notNull(),
-  ssn: text("ssn").notNull(), // last 4 digits only for display, full stored encrypted (dummy)
+  ssn: text("ssn").notNull(), // bcrypt hash of full SSN
+  ssnLast4: text("ssn_last4"), // last 4 digits for display only
   driversLicense: text("drivers_license").notNull(),
   hasRealtorLicense: integer("has_realtor_license", { mode: "boolean" }).default(false),
   realtorLicenseNumber: text("realtor_license_number"),
@@ -197,7 +198,8 @@ export const chaperoneApplications = sqliteTable("chaperone_applications", {
   backgroundCheckDate: text("background_check_date"),
   bankAccountName: text("bank_account_name"),
   bankRoutingNumber: text("bank_routing_number"),
-  bankAccountNumber: text("bank_account_number"),
+  bankAccountNumber: text("bank_account_number"), // bcrypt hash of full account number
+  accountNumberLast4: text("account_number_last4"), // last 4 digits for display
   bankAccountType: text("bank_account_type").default("checking"), // checking | savings
   agreedToTerms: integer("agreed_to_terms", { mode: "boolean" }).default(false),
   agreedToTermsDate: text("agreed_to_terms_date"),
@@ -225,3 +227,35 @@ export const chaperonePayouts = sqliteTable("chaperone_payouts", {
 export const insertChaperonePayoutSchema = createInsertSchema(chaperonePayouts).omit({ id: true, createdAt: true });
 export type InsertChaperonePayout = z.infer<typeof insertChaperonePayoutSchema>;
 export type ChaperonePayout = typeof chaperonePayouts.$inferSelect;
+
+// ── Payments ────────────────────────────────────────────────────────────
+export const payments = sqliteTable("payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  amount: text("amount").notNull(), // e.g. "20.00"
+  type: text("type").notNull(), // "walkthrough_fee", "platform_fee", "chaperone_payout"
+  status: text("status").notNull().default("pending"), // pending, completed, failed
+  stripePaymentId: text("stripe_payment_id"),
+  relatedId: integer("related_id"), // walkthrough_id, transaction_id, or payout_id
+  createdAt: text("created_at").default(""),
+});
+
+export const insertPaymentSchema = createInsertSchema(payments).omit({ id: true, createdAt: true });
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+export type Payment = typeof payments.$inferSelect;
+
+// ── Notifications ────────────────────────────────────────────────────────────
+export const notifications = sqliteTable("notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull(),
+  type: text("type").notNull(), // "offer_received", "offer_accepted", "walkthrough_scheduled", etc.
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  read: integer("read").default(0),
+  relatedUrl: text("related_url"), // hash route to navigate to
+  createdAt: text("created_at").default(""),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;

@@ -1,9 +1,9 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, like, and, gte, lte, desc, or } from "drizzle-orm";
+import { eq, like, and, gte, lte, desc, asc, or } from "drizzle-orm";
 import {
   users, listings, offers, walkthroughs, documents, messages, transactions, savedSearches, favorites,
-  chaperoneApplications, chaperonePayouts,
+  chaperoneApplications, chaperonePayouts, payments, notifications,
   type User, type InsertUser,
   type Listing, type InsertListing,
   type Offer, type InsertOffer,
@@ -15,6 +15,8 @@ import {
   type Favorite, type InsertFavorite,
   type ChaperoneApplication, type InsertChaperoneApplication,
   type ChaperonePayout, type InsertChaperonePayout,
+  type Payment, type InsertPayment,
+  type Notification, type InsertNotification,
 } from "@shared/schema";
 
 const sqlite = new Database("data.db");
@@ -152,6 +154,7 @@ sqlite.exec(`
     longitude REAL,
     date_of_birth TEXT NOT NULL,
     ssn TEXT NOT NULL,
+    ssn_last4 TEXT,
     drivers_license TEXT NOT NULL,
     has_realtor_license INTEGER DEFAULT 0,
     realtor_license_number TEXT,
@@ -163,6 +166,7 @@ sqlite.exec(`
     bank_account_name TEXT,
     bank_routing_number TEXT,
     bank_account_number TEXT,
+    account_number_last4 TEXT,
     bank_account_type TEXT DEFAULT 'checking',
     agreed_to_terms INTEGER DEFAULT 0,
     agreed_to_terms_date TEXT,
@@ -180,7 +184,28 @@ sqlite.exec(`
     bank_last4 TEXT,
     created_at TEXT NOT NULL DEFAULT ''
   );
+  CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    amount TEXT NOT NULL,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    stripe_payment_id TEXT,
+    related_id INTEGER,
+    created_at TEXT DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    read INTEGER DEFAULT 0,
+    related_url TEXT,
+    created_at TEXT DEFAULT ''
+  );
 `);
+
 
 export const db = drizzle(sqlite);
 
@@ -207,7 +232,10 @@ export interface IStorage {
     propertyType?: string;
     status?: string;
     search?: string;
-  }): Listing[];
+    sort?: string;
+    page?: number;
+    limit?: number;
+  }): { listings: Listing[]; total: number };
   getListingsBySeller(sellerId: number): Listing[];
   createListing(listing: InsertListing): Listing;
   updateListing(id: number, data: Partial<InsertListing>): Listing | undefined;
@@ -218,6 +246,7 @@ export interface IStorage {
   getOffer(id: number): Offer | undefined;
   getOffersByListing(listingId: number): Offer[];
   getOffersByBuyer(buyerId: number): Offer[];
+  getOffersBySeller(userId: number): Offer[];
   createOffer(offer: InsertOffer): Offer;
   updateOffer(id: number, data: Partial<InsertOffer>): Offer | undefined;
 
@@ -271,6 +300,24 @@ export interface IStorage {
   createChaperonePayout(payout: InsertChaperonePayout): ChaperonePayout;
   updateChaperonePayout(id: number, data: Partial<InsertChaperonePayout>): ChaperonePayout | undefined;
   getChaperoneEarnings(chaperoneId: number): { total: number; pending: number; paid: number };
+
+  // Payments
+  createPayment(payment: InsertPayment): Payment;
+  getPaymentsByUser(userId: number): Payment[];
+  getAllPayments(): Payment[];
+  updatePayment(id: number, data: Partial<InsertPayment>): Payment | undefined;
+
+  // Notifications
+  createNotification(notification: InsertNotification): Notification;
+  getNotificationsByUser(userId: number): Notification[];
+  markNotificationRead(id: number): Notification | undefined;
+  getUnreadCount(userId: number): number;
+
+  // Admin
+  getAllUsers(): User[];
+  getAllListings(): Listing[];
+  getAllTransactions(): Transaction[];
+  getPlatformStats(): { totalUsers: number; totalListings: number; activeTransactions: number; totalRevenue: number; totalPayouts: number };
 }
 
 export class DatabaseStorage implements IStorage {
@@ -300,7 +347,8 @@ export class DatabaseStorage implements IStorage {
     city?: string; state?: string; minPrice?: number; maxPrice?: number;
     minBeds?: number; maxBeds?: number; minBaths?: number; maxBaths?: number;
     minSqft?: number; maxSqft?: number; propertyType?: string; status?: string; search?: string;
-  }): Listing[] {
+    sort?: string; page?: number; limit?: number;
+  }): { listings: Listing[]; total: number } {
     const conditions: any[] = [];
     if (filters) {
       if (filters.status) conditions.push(eq(listings.status, filters.status));
@@ -324,7 +372,27 @@ export class DatabaseStorage implements IStorage {
     } else {
       conditions.push(eq(listings.status, "active"));
     }
-    return db.select().from(listings).where(and(...conditions)).orderBy(desc(listings.createdAt)).all();
+    const whereClause = and(...conditions);
+
+    // Count total
+    const countRow = db.select({ count: listings.id }).from(listings).where(whereClause).all();
+    const total = countRow.length;
+
+    // Sort
+    const sort = filters?.sort || "newest";
+    let orderClause: any;
+    if (sort === "price_asc") orderClause = asc(listings.price);
+    else if (sort === "price_desc") orderClause = desc(listings.price);
+    else if (sort === "oldest") orderClause = asc(listings.createdAt);
+    else orderClause = desc(listings.createdAt); // newest
+
+    // Pagination
+    const page = filters?.page ?? 1;
+    const limit = filters?.limit ?? 20;
+    const offset = (page - 1) * limit;
+
+    const result = db.select().from(listings).where(whereClause).orderBy(orderClause).limit(limit).offset(offset).all();
+    return { listings: result, total };
   }
 
   getListingsBySeller(sellerId: number): Listing[] {
@@ -358,6 +426,29 @@ export class DatabaseStorage implements IStorage {
 
   getOffersByBuyer(buyerId: number): Offer[] {
     return db.select().from(offers).where(eq(offers.buyerId, buyerId)).orderBy(desc(offers.createdAt)).all();
+  }
+
+  getOffersBySeller(userId: number): Offer[] {
+    const result = sqlite.prepare(`
+      SELECT offers.* FROM offers
+      JOIN listings ON offers.listing_id = listings.id
+      WHERE listings.seller_id = ?
+      ORDER BY offers.created_at DESC
+    `).all(userId);
+    // Map snake_case columns to camelCase to match the Drizzle schema output
+    return (result as any[]).map((r: any) => ({
+      id: r.id,
+      listingId: r.listing_id,
+      buyerId: r.buyer_id,
+      amount: r.amount,
+      status: r.status,
+      message: r.message,
+      contingencies: r.contingencies,
+      closingDate: r.closing_date,
+      counterAmount: r.counter_amount,
+      counterMessage: r.counter_message,
+      createdAt: r.created_at,
+    }));
   }
 
   createOffer(offer: InsertOffer): Offer {
@@ -529,6 +620,71 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return { total, pending, paid };
+  }
+
+  // ── Payments ──
+  createPayment(payment: InsertPayment): Payment {
+    return db.insert(payments).values({ ...payment, createdAt: new Date().toISOString() }).returning().get();
+  }
+
+  getPaymentsByUser(userId: number): Payment[] {
+    return db.select().from(payments).where(eq(payments.userId, userId)).orderBy(desc(payments.createdAt)).all();
+  }
+
+  getAllPayments(): Payment[] {
+    return db.select().from(payments).orderBy(desc(payments.createdAt)).all();
+  }
+
+  updatePayment(id: number, data: Partial<InsertPayment>): Payment | undefined {
+    return db.update(payments).set(data).where(eq(payments.id, id)).returning().get();
+  }
+
+  // ── Notifications ──
+  createNotification(notification: InsertNotification): Notification {
+    return db.insert(notifications).values({ ...notification, createdAt: new Date().toISOString() }).returning().get();
+  }
+
+  getNotificationsByUser(userId: number): Notification[] {
+    return db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(50).all();
+  }
+
+  markNotificationRead(id: number): Notification | undefined {
+    return db.update(notifications).set({ read: 1 }).where(eq(notifications.id, id)).returning().get();
+  }
+
+  getUnreadCount(userId: number): number {
+    const rows = db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.read, 0))).all();
+    return rows.length;
+  }
+
+  // ── Admin ──
+  getAllUsers(): User[] {
+    return db.select().from(users).orderBy(desc(users.createdAt)).all();
+  }
+
+  getAllListings(): Listing[] {
+    return db.select().from(listings).orderBy(desc(listings.createdAt)).all();
+  }
+
+  getAllTransactions(): Transaction[] {
+    return db.select().from(transactions).orderBy(desc(transactions.createdAt)).all();
+  }
+
+  getPlatformStats(): { totalUsers: number; totalListings: number; activeTransactions: number; totalRevenue: number; totalPayouts: number } {
+    const allUsers = db.select().from(users).all();
+    const allListings = db.select().from(listings).all();
+    const activeTransactions = db.select().from(transactions).where(eq(transactions.status, "in_progress")).all();
+    const allPayments = db.select().from(payments).where(eq(payments.status, "completed")).all();
+    const totalRevenue = allPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+    const chaperonePayoutRecords = db.select().from(chaperonePayouts).where(and(eq(chaperonePayouts.type, "payout"), eq(chaperonePayouts.status, "completed"))).all();
+    const totalPayouts = chaperonePayoutRecords.reduce((sum, p) => sum + Math.abs(p.amount), 0);
+    return {
+      totalUsers: allUsers.length,
+      totalListings: allListings.length,
+      activeTransactions: activeTransactions.length,
+      totalRevenue,
+      totalPayouts,
+    };
   }
 }
 

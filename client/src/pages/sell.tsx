@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, ArrowRight, Camera, Check, DollarSign, MapPin, HomeIcon, Bot } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, Check, DollarSign, MapPin, HomeIcon, Bot, X, Upload } from "lucide-react";
 
 const STEPS = ["Property Details", "Description & Features", "Photos & Pricing", "Review & List"];
 
@@ -19,6 +19,9 @@ export default function Sell() {
   const [, setLocation] = useLocation();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     title: "", description: "", address: "", city: "", state: "FL", zip: "",
     price: "", bedrooms: "", bathrooms: "", sqft: "", lotSize: "",
@@ -28,11 +31,56 @@ export default function Sell() {
 
   const update = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(file => formData.append("images", file));
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Upload failed");
+      }
+
+      const data = await res.json();
+      setUploadedImages(prev => [...prev, ...data.urls]);
+      toast({ title: "Photos uploaded", description: `${data.urls.length} photo(s) added successfully.` });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      // Reset file input so same files can be re-selected if needed
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removeImage = (url: string) => {
+    setUploadedImages(prev => prev.filter(u => u !== url));
+  };
+
   const submit = async () => {
     if (!user) return toast({ title: "Sign in required", variant: "destructive" });
     setSubmitting(true);
     try {
       const featureList = form.features.split(",").map(f => f.trim()).filter(Boolean);
+
+      // Use uploaded images, or fallback to placeholder images
+      const images = uploadedImages.length > 0
+        ? uploadedImages
+        : [
+            "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800",
+            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800",
+          ];
+
       await apiRequest("POST", "/api/listings", {
         sellerId: user.id, title: form.title, description: form.description,
         address: form.address, city: form.city, state: form.state, zip: form.zip,
@@ -42,10 +90,7 @@ export default function Sell() {
         yearBuilt: form.yearBuilt ? parseInt(form.yearBuilt) : null,
         propertyType: form.propertyType,
         features: JSON.stringify(featureList),
-        images: JSON.stringify([
-          "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800",
-          "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800"
-        ]),
+        images: JSON.stringify(images),
         hoaFee: form.hoaFee ? parseFloat(form.hoaFee) : 0,
         taxAmount: form.taxAmount ? parseFloat(form.taxAmount) : 0,
       });
@@ -188,11 +233,65 @@ export default function Sell() {
             <DollarSign className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">Photos & Pricing</h2>
           </div>
-          <div className="rounded-md border-2 border-dashed p-8 text-center">
-            <Camera className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
-            <p className="text-sm font-medium">Upload Photos</p>
-            <p className="text-xs text-muted-foreground">Drag and drop or click to upload. Demo uses placeholder images.</p>
+
+          {/* Real file upload area */}
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+              data-testid="input-images"
+            />
+            <div
+              className="rounded-md border-2 border-dashed p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? (
+                <>
+                  <Upload className="mx-auto mb-2 h-6 w-6 text-primary animate-pulse" />
+                  <p className="text-sm font-medium">Uploading...</p>
+                </>
+              ) : (
+                <>
+                  <Camera className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
+                  <p className="text-sm font-medium">Upload Photos</p>
+                  <p className="text-xs text-muted-foreground mt-1">Click to select images (max 10, 10MB each)</p>
+                </>
+              )}
+            </div>
+
+            {/* Preview uploaded images */}
+            {uploadedImages.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {uploadedImages.map((url, idx) => (
+                  <div key={url} className="relative group aspect-square">
+                    <img
+                      src={url}
+                      alt={`Upload ${idx + 1}`}
+                      className="w-full h-full object-cover rounded-md"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(url)}
+                      className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {uploadedImages.length === 0 && (
+              <p className="mt-2 text-xs text-muted-foreground text-center">
+                No photos uploaded — placeholder images will be used
+              </p>
+            )}
           </div>
+
           <div className="space-y-2">
             <Label>Listing Price ($)</Label>
             <Input type="number" placeholder="500000" value={form.price} onChange={e => update("price", e.target.value)} data-testid="input-price" />
@@ -253,6 +352,10 @@ export default function Sell() {
             <div className="flex justify-between border-b pb-2">
               <span className="text-muted-foreground">Type</span>
               <span className="font-medium capitalize">{form.propertyType.replace("_", " ")}</span>
+            </div>
+            <div className="flex justify-between border-b pb-2">
+              <span className="text-muted-foreground">Photos</span>
+              <span className="font-medium">{uploadedImages.length > 0 ? `${uploadedImages.length} uploaded` : "Placeholder images"}</span>
             </div>
           </div>
           <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">

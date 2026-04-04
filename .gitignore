@@ -9,3 +9,4 @@ vite.config.ts.*
 *.db-wal
 .env
 .env.local
+uploads/
