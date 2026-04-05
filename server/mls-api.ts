@@ -102,8 +102,9 @@ function transformListing(property: any): MLSListing | null {
     const photos = extractPhotos(property);
 
     // Coordinates
-    const lat = property.location?.coordinate?.lat || property.lat || property.latitude || 0;
-    const lng = property.location?.coordinate?.lon || property.lon || property.longitude || 0;
+    const coord = property.location?.address?.coordinate || property.location?.coordinate || {};
+    const lat = coord.lat || property.lat || property.latitude || 0;
+    const lng = coord.lon || coord.lng || property.lon || property.longitude || 0;
 
     // Description text
     const descText =
@@ -113,10 +114,12 @@ function transformListing(property: any): MLSListing | null {
       `${beds} bed, ${baths} bath ${propertyType.replace("_", " ")} in ${city}, ${state}. Listed at $${price.toLocaleString()}.`;
 
     // Listing URL
-    const permalink = property.href || property.permalink || property.url || "";
+    const permalink = property.permalink || property.href || property.url || "";
     const listingUrl = permalink.startsWith("http")
       ? permalink
-      : `https://www.realtor.com/realestateandhomes-detail/${encodeURIComponent(address.replace(/ /g, "-"))}_${city.replace(/ /g, "-")}_${state}_${zip}`;
+      : permalink
+        ? `https://www.realtor.com/realestateandhomes-detail/${permalink}`
+        : `https://www.realtor.com/realestateandhomes-detail/${address.replace(/ /g, "-")}_${city.replace(/ /g, "-")}_${state}_${zip}`;
 
     const title = `${beds > 0 ? `${beds}BR ` : ""}${propertyType.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())} in ${city}`;
 
@@ -211,7 +214,7 @@ export async function searchMLSListings(params: MLSSearchParams): Promise<MLSLis
     if (apiType) qs.set("type", apiType);
   }
 
-  const url = `https://realtor16.p.rapidapi.com/forsale?${qs.toString()}`;
+  const url = `https://realtor16.p.rapidapi.com/search/forsale?${qs.toString()}`;
   console.log("[MLS] Fetching:", url);
 
   try {
