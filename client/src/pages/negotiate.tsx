@@ -34,6 +34,10 @@ export default function Negotiate() {
     enabled: !!offer?.listingId,
   });
 
+  // Detect user role in this negotiation
+  const isSeller = listing ? user?.id === listing.sellerId : false;
+  const isBuyer = !isSeller;
+
   const { data: messages = [], refetch: refetchMessages } = useQuery<Message[]>({
     queryKey: ["/api/messages/offer", params?.id],
     queryFn: () => apiRequest("GET", `/api/messages/offer/${params?.id}`).then(r => r.json()),
@@ -86,6 +90,11 @@ export default function Negotiate() {
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 {offer && <span>Offer: {formatPrice(offer.amount)}</span>}
                 {offer && <Badge variant="outline" className="text-[10px]">{offer.status}</Badge>}
+                {isSeller ? (
+                  <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-800">Seller View</Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-800">Buyer View</Badge>
+                )}
               </div>
             </div>
           </div>
@@ -104,10 +113,13 @@ export default function Negotiate() {
           {messages.length === 0 && (
             <div className="text-center py-8">
               <Bot className="mx-auto mb-3 h-8 w-8 text-primary" />
-              <h2 className="text-sm font-medium">Your AI Negotiation Agent</h2>
-              <p className="text-xs text-muted-foreground mt-1">
-                I'll guide you through the entire negotiation and closing process. Ask me anything about
-                the offer, market analysis, inspections, or paperwork.
+              <h2 className="text-sm font-medium">
+                {isSeller ? "AI Seller Negotiation Agent" : "AI Buyer Negotiation Agent"}
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                {isSeller
+                  ? "I'm managing this negotiation on your behalf. The buyer communicates through their own AI agent — messages are mediated through AI to protect both parties. Ask me anything about the offer, comparable sales, or counter-offer strategy."
+                  : "I'll guide you through the entire negotiation and closing process. Ask me anything about the offer, market analysis, inspections, or paperwork."}
               </p>
             </div>
           )}
@@ -169,8 +181,11 @@ export default function Negotiate() {
             <Send className="h-4 w-4" />
           </Button>
         </form>
-        <div className="mx-auto mt-2 flex max-w-3xl gap-1.5">
-          {["What are the comps?", "Prepare inspection contingency", "Draft counter-offer", "Status of documents"].map((q) => (
+        <div className="mx-auto mt-2 flex max-w-3xl gap-1.5 flex-wrap">
+          {(isSeller
+            ? ["What are comparable sales?", "Should I counter this offer?", "Explain the contingencies", "Status of documents"]
+            : ["What are the comps?", "Prepare inspection contingency", "Draft counter-offer", "Status of documents"]
+          ).map((q) => (
             <Button
               key={q} variant="outline" size="sm"
               className="text-[10px] h-6 px-2"

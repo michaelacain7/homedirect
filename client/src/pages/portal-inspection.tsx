@@ -5,12 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Upload, FileText, Loader2, CheckCircle2,
-  AlertTriangle, AlertCircle, Info, Send, Search, Bot, User
+  AlertTriangle, AlertCircle, Info, Send, Search, Bot, User,
+  Wrench, DollarSign, Check, X
 } from "lucide-react";
 import type { Transaction } from "@shared/schema";
 
@@ -86,6 +90,129 @@ const MOCK_ANALYSIS = {
 
 const STATUS_STEPS = ["Scheduled", "In Progress", "Report Received", "Review Complete"];
 
+// Seller Repair Response Component
+function SellerRepairResponse({
+  repairRequest,
+  onSubmit,
+  isPending,
+  notes,
+  onNotesChange,
+}: {
+  repairRequest: any;
+  onSubmit: (responses: Array<{ finding: string; decision: string; counterAmount?: number; estimatedCost: number }>) => void;
+  isPending: boolean;
+  notes: string;
+  onNotesChange: (v: string) => void;
+}) {
+  const items: Array<{ finding: string; type: string; estimatedCost: number }> = (() => {
+    try { return JSON.parse(repairRequest.buyerItems || "[]"); } catch { return []; }
+  })();
+
+  const [decisions, setDecisions] = useState<Record<number, { decision: string; counterAmount: string }>>(        
+    () => Object.fromEntries(items.map((_, i) => [i, { decision: "accept", counterAmount: "" }]))
+  );
+
+  const setDecision = (idx: number, decision: string) => {
+    setDecisions(prev => ({ ...prev, [idx]: { ...prev[idx], decision } }));
+  };
+
+  const setCounter = (idx: number, amount: string) => {
+    setDecisions(prev => ({ ...prev, [idx]: { ...prev[idx], counterAmount: amount } }));
+  };
+
+  const handleSubmit = () => {
+    const responses = items.map((item, i) => ({
+      finding: item.finding,
+      decision: decisions[i]?.decision || "accept",
+      counterAmount: decisions[i]?.counterAmount ? parseFloat(decisions[i].counterAmount) : undefined,
+      estimatedCost: item.estimatedCost,
+    }));
+    onSubmit(responses);
+  };
+
+  return (
+    <Card style={{ borderRadius: "14px" }} className="border-orange-200 bg-orange-50/50">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Wrench className="h-4 w-4 text-orange-600" />
+          Repair Request — Your Response Required
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">The buyer has submitted the following repair/credit requests. Accept, counter, or decline each item.</p>
+        <div className="space-y-3">
+          {items.map((item, idx) => (
+            <div key={idx} className="p-3 rounded-xl border bg-white">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <p className="text-sm font-medium">{item.finding}</p>
+                  <p className="text-xs text-muted-foreground">Buyer requests: <span className="capitalize font-medium">{item.type}</span> — ${item.estimatedCost?.toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant={decisions[idx]?.decision === "accept" ? "default" : "outline"}
+                  className="h-7 text-xs"
+                  onClick={() => setDecision(idx, "accept")}
+                >
+                  <Check className="h-3 w-3 mr-1" /> Accept
+                </Button>
+                <Button
+                  size="sm"
+                  variant={decisions[idx]?.decision === "counter" ? "default" : "outline"}
+                  className="h-7 text-xs"
+                  onClick={() => setDecision(idx, "counter")}
+                >
+                  <DollarSign className="h-3 w-3 mr-1" /> Counter
+                </Button>
+                <Button
+                  size="sm"
+                  variant={decisions[idx]?.decision === "decline" ? "destructive" : "outline"}
+                  className="h-7 text-xs"
+                  onClick={() => setDecision(idx, "decline")}
+                >
+                  <X className="h-3 w-3 mr-1" /> Decline
+                </Button>
+              </div>
+              {decisions[idx]?.decision === "counter" && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Counter amount ($):</span>
+                  <input
+                    type="number"
+                    className="border rounded px-2 py-0.5 text-xs w-32"
+                    placeholder={item.estimatedCost.toString()}
+                    value={decisions[idx]?.counterAmount || ""}
+                    onChange={e => setCounter(idx, e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">Notes to Buyer (optional)</Label>
+          <Textarea
+            rows={2}
+            placeholder="Any notes about your response..."
+            value={notes}
+            onChange={e => onNotesChange(e.target.value)}
+          />
+        </div>
+        <Button
+          className="w-full"
+          disabled={isPending}
+          onClick={handleSubmit}
+          style={{ backgroundColor: "hsl(160, 60%, 28%)" }}
+        >
+          {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+          Respond to Repair Request
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 }
@@ -116,6 +243,25 @@ export default function PortalInspection() {
   const [chatMessage, setChatMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
+  // Repair request state
+  const [showRepairForm, setShowRepairForm] = useState(false);
+  const [repairNotes, setRepairNotes] = useState("");
+  type RepairItem = { finding: string; type: "repair" | "credit"; estimatedCost: number; selected: boolean };
+  const [repairItems, setRepairItems] = useState<RepairItem[]>(() => [
+    ...MOCK_ANALYSIS.major.map(item => ({
+      finding: item.title,
+      type: item.recommendation === "request_repair" ? "repair" as const : "credit" as const,
+      estimatedCost: parseInt(item.cost.replace(/[^0-9]/g, "").substring(0, 6)) || 0,
+      selected: item.recommendation !== "accept",
+    })),
+    ...MOCK_ANALYSIS.moderate.filter(item => item.recommendation !== "accept").map(item => ({
+      finding: item.title,
+      type: item.recommendation === "request_repair" ? "repair" as const : "credit" as const,
+      estimatedCost: parseInt(item.cost.replace(/[^0-9]/g, "").substring(0, 6)) || 0,
+      selected: false,
+    })),
+  ]);
+
   const txnId = params?.id;
 
   const { data: txn } = useQuery<Transaction>({
@@ -134,6 +280,46 @@ export default function PortalInspection() {
     queryKey: ["/api/transactions", txnId, "portal-documents", "inspection"],
     queryFn: () => apiRequest("GET", `/api/transactions/${txnId}/portal-documents?portal=inspection`).then((r) => r.json()),
     enabled: !!txnId && !!user,
+  });
+
+  const { data: existingRepairRequest, refetch: refetchRepairReq } = useQuery<any>({
+    queryKey: ["/api/transactions", txnId, "repair-request"],
+    queryFn: () => apiRequest("GET", `/api/transactions/${txnId}/repair-request`).then(r => r.ok ? r.json() : null).catch(() => null),
+    enabled: !!txnId && !!user,
+  });
+
+  const submitRepairRequest = useMutation({
+    mutationFn: async () => {
+      const selected = repairItems.filter(r => r.selected);
+      const res = await apiRequest("POST", `/api/transactions/${txnId}/repair-request`, {
+        items: selected.map(({ finding, type, estimatedCost }) => ({ finding, type, estimatedCost })),
+        notes: repairNotes,
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Repair request submitted", description: "The seller has been notified." });
+      refetchRepairReq();
+      setShowRepairForm(false);
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const submitRepairResponse = useMutation({
+    mutationFn: async (responses: Array<{ finding: string; decision: string; counterAmount?: number; estimatedCost: number }>) => {
+      const res = await apiRequest("POST", `/api/transactions/${txnId}/repair-response`, {
+        responses,
+        notes: repairNotes,
+      });
+      if (!res.ok) throw new Error((await res.json()).message || "Failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Response submitted", description: "The buyer has been notified." });
+      refetchRepairReq();
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const sendChat = useMutation({
@@ -162,6 +348,11 @@ export default function PortalInspection() {
   // Check if inspection report was already uploaded
   const existingReport = docs.find((d) => d.type === "inspection_report" && d.status === "uploaded");
   const currentStep = showAnalysis || existingReport ? 3 : uploadedFile ? 2 : txn?.inspectionStatus === "in_progress" ? 1 : 0;
+
+  const isBuyer = txn ? user?.id === txn.buyerId : true;
+  const isSeller = txn ? user?.id === txn.sellerId : false;
+
+  const totalCreditRequested = repairItems.filter(r => r.selected).reduce((sum, r) => sum + r.estimatedCost, 0);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -430,18 +621,160 @@ export default function PortalInspection() {
                       <p className="text-xs opacity-80">Recommended Seller Credit</p>
                       <p className="text-xl font-bold">{MOCK_ANALYSIS.creditTotal}</p>
                     </div>
-                    <Button
-                      className="flex-shrink-0"
-                      style={{ backgroundColor: "hsl(160, 60%, 28%)" }}
-                      onClick={() => {
-                        sendChat.mutate("Please draft a repair request / credit request based on the inspection findings");
-                      }}
-                    >
-                      Draft Repair Request
-                    </Button>
+                    {isBuyer && (
+                      <Button
+                        className="flex-shrink-0"
+                        style={{ backgroundColor: "hsl(160, 60%, 28%)" }}
+                        onClick={() => setShowRepairForm(true)}
+                      >
+                        <Wrench className="mr-1.5 h-4 w-4" /> Submit Repair Request
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
+
+              {/* BUYER: Submit Repair Request Form */}
+              {isBuyer && showRepairForm && !existingRepairRequest && (
+                <Card style={{ borderRadius: "14px" }} className="border-amber-200">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span className="flex items-center gap-2"><Wrench className="h-4 w-4 text-amber-600" /> Submit Repair Request</span>
+                      <Button size="sm" variant="ghost" onClick={() => setShowRepairForm(false)}><X className="h-4 w-4" /></Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground">Select items to include in your repair request. For each, choose whether you want the seller to repair or provide a credit.</p>
+                    <div className="space-y-3">
+                      {repairItems.map((item, idx) => (
+                        <div key={idx} className={`p-3 rounded-xl border transition-colors ${item.selected ? "bg-amber-50 border-amber-200" : "border-border"}`}>
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              id={`repair-${idx}`}
+                              checked={item.selected}
+                              onCheckedChange={checked => {
+                                setRepairItems(prev => prev.map((r, i) => i === idx ? { ...r, selected: !!checked } : r));
+                              }}
+                            />
+                            <div className="flex-1">
+                              <Label htmlFor={`repair-${idx}`} className="text-sm font-medium cursor-pointer">{item.finding}</Label>
+                              <p className="text-xs text-muted-foreground mt-0.5">Est. cost: ${item.estimatedCost.toLocaleString()}</p>
+                              {item.selected && (
+                                <div className="flex gap-2 mt-2">
+                                  <Button
+                                    size="sm"
+                                    variant={item.type === "repair" ? "default" : "outline"}
+                                    className="h-6 text-xs px-2"
+                                    onClick={() => setRepairItems(prev => prev.map((r, i) => i === idx ? { ...r, type: "repair" } : r))}
+                                  >
+                                    <Wrench className="h-3 w-3 mr-1" /> Repair
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={item.type === "credit" ? "default" : "outline"}
+                                    className="h-6 text-xs px-2"
+                                    onClick={() => setRepairItems(prev => prev.map((r, i) => i === idx ? { ...r, type: "credit" } : r))}
+                                  >
+                                    <DollarSign className="h-3 w-3 mr-1" /> Credit
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-primary/10">
+                      <span className="text-sm font-medium">Total credit requested:</span>
+                      <span className="text-sm font-bold text-primary">${totalCreditRequested.toLocaleString()}</span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Additional Notes</Label>
+                      <Textarea
+                        rows={3}
+                        placeholder="Any additional context or requests for the seller..."
+                        value={repairNotes}
+                        onChange={e => setRepairNotes(e.target.value)}
+                      />
+                    </div>
+
+                    <Button
+                      className="w-full"
+                      disabled={repairItems.filter(r => r.selected).length === 0 || submitRepairRequest.isPending}
+                      onClick={() => submitRepairRequest.mutate()}
+                      style={{ backgroundColor: "hsl(160, 60%, 28%)" }}
+                    >
+                      {submitRepairRequest.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                      Submit Repair Request to Seller
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Existing repair request (buyer view) */}
+              {isBuyer && existingRepairRequest && (
+                <Card style={{ borderRadius: "14px" }} className="border-green-200 bg-green-50/50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Repair Request Submitted
+                      <Badge className={`text-xs ml-auto ${
+                        existingRepairRequest.status === "accepted" ? "bg-green-100 text-green-700" :
+                        existingRepairRequest.status === "countered" ? "bg-blue-100 text-blue-700" :
+                        existingRepairRequest.status === "responded" ? "bg-amber-100 text-amber-700" :
+                        "bg-gray-100 text-gray-700"
+                      }`}>{existingRepairRequest.status}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-2">
+                      {(() => { try { return JSON.parse(existingRepairRequest.buyerItems || "[]"); } catch { return []; } })().map((item: any, i: number) => (
+                        <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
+                          <span>{item.finding}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs capitalize">{item.type}</Badge>
+                            <span className="font-medium">${item.estimatedCost?.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {existingRepairRequest.buyerNotes && (
+                      <p className="text-xs text-muted-foreground italic">"{existingRepairRequest.buyerNotes}"</p>
+                    )}
+                    {existingRepairRequest.sellerResponse && (
+                      <div className="mt-3 p-3 rounded-xl bg-blue-50 border border-blue-200">
+                        <p className="text-xs font-semibold text-blue-700 mb-2">Seller's Response:</p>
+                        {(() => { try { return JSON.parse(existingRepairRequest.sellerResponse); } catch { return []; } })().map((r: any, i: number) => (
+                          <div key={i} className="flex justify-between text-xs mb-1">
+                            <span>{r.finding}</span>
+                            <Badge className={`text-[10px] ${
+                              r.decision === "accept" ? "bg-green-100 text-green-700" :
+                              r.decision === "counter" ? "bg-amber-100 text-amber-700" :
+                              "bg-red-100 text-red-700"
+                            }`}>{r.decision}{r.counterAmount ? ` $${r.counterAmount.toLocaleString()}` : ""}</Badge>
+                          </div>
+                        ))}
+                        {existingRepairRequest.agreedCredits && (
+                          <p className="text-xs font-semibold text-blue-700 mt-2">Agreed credits: ${parseFloat(existingRepairRequest.agreedCredits).toLocaleString()}</p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* SELLER: View & Respond to Repair Request */}
+              {isSeller && existingRepairRequest && existingRepairRequest.status === "pending" && (
+                <SellerRepairResponse
+                  repairRequest={existingRepairRequest}
+                  onSubmit={(responses) => submitRepairResponse.mutate(responses)}
+                  isPending={submitRepairResponse.isPending}
+                  notes={repairNotes}
+                  onNotesChange={setRepairNotes}
+                />
+              )}
             </div>
           )}
 

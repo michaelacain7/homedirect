@@ -4,7 +4,7 @@ import { eq, like, and, gte, lte, desc, asc, or } from "drizzle-orm";
 import {
   users, listings, offers, walkthroughs, documents, messages, transactions, savedSearches, favorites,
   chaperoneApplications, chaperonePayouts, payments, notifications,
-  transactionChecklist, portalMessages, portalDocuments,
+  transactionChecklist, portalMessages, portalDocuments, repairRequests,
   type User, type InsertUser,
   type Listing, type InsertListing,
   type Offer, type InsertOffer,
@@ -21,6 +21,7 @@ import {
   type TransactionChecklist, type InsertTransactionChecklist,
   type PortalMessage, type InsertPortalMessage,
   type PortalDocument, type InsertPortalDocument,
+  type RepairRequest, type InsertRepairRequest,
 } from "@shared/schema";
 
 const sqlite = new Database("data.db");
@@ -240,7 +241,35 @@ sqlite.exec(`
     uploaded_by INTEGER,
     created_at TEXT DEFAULT ''
   );
+  CREATE TABLE IF NOT EXISTS repair_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    buyer_items TEXT NOT NULL,
+    buyer_notes TEXT,
+    seller_response TEXT,
+    seller_notes TEXT,
+    agreed_credits TEXT,
+    created_at TEXT DEFAULT ''
+  );
 `);
+
+// Add new columns to offers if they don't exist (migration for existing DBs)
+try {
+  sqlite.exec(`ALTER TABLE offers ADD COLUMN financing_type TEXT DEFAULT 'conventional'`);
+} catch {}
+try {
+  sqlite.exec(`ALTER TABLE offers ADD COLUMN down_payment_percent REAL`);
+} catch {}
+try {
+  sqlite.exec(`ALTER TABLE offers ADD COLUMN earnest_money REAL`);
+} catch {}
+try {
+  sqlite.exec(`ALTER TABLE offers ADD COLUMN closing_days INTEGER DEFAULT 30`);
+} catch {}
+try {
+  sqlite.exec(`ALTER TABLE offers ADD COLUMN escalation_max REAL`);
+} catch {}
 
 
 export const db = drizzle(sqlite);
@@ -363,6 +392,11 @@ export interface IStorage {
   getPortalDocuments(transactionId: number, portal?: string): PortalDocument[];
   createPortalDocument(doc: InsertPortalDocument): PortalDocument;
   updatePortalDocument(id: number, data: Partial<InsertPortalDocument>): PortalDocument | undefined;
+
+  // Repair Requests
+  getRepairRequestByTransaction(transactionId: number): RepairRequest | undefined;
+  createRepairRequest(req: InsertRepairRequest): RepairRequest;
+  updateRepairRequest(id: number, data: Partial<InsertRepairRequest>): RepairRequest | undefined;
 
   // Admin
   getAllUsers(): User[];
@@ -748,6 +782,19 @@ export class DatabaseStorage implements IStorage {
 
   updatePortalDocument(id: number, data: Partial<InsertPortalDocument>): PortalDocument | undefined {
     return db.update(portalDocuments).set(data).where(eq(portalDocuments.id, id)).returning().get();
+  }
+
+  // ── Repair Requests ──
+  getRepairRequestByTransaction(transactionId: number): RepairRequest | undefined {
+    return db.select().from(repairRequests).where(eq(repairRequests.transactionId, transactionId)).get();
+  }
+
+  createRepairRequest(req: InsertRepairRequest): RepairRequest {
+    return db.insert(repairRequests).values({ ...req, createdAt: new Date().toISOString() }).returning().get();
+  }
+
+  updateRepairRequest(id: number, data: Partial<InsertRepairRequest>): RepairRequest | undefined {
+    return db.update(repairRequests).set(data).where(eq(repairRequests.id, id)).returning().get();
   }
 
   // ── Admin ──

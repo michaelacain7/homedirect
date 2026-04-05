@@ -206,18 +206,50 @@ function seedDatabase() {
 
   listings.forEach(l => storage.createListing(l as any));
 
-  // Create a demo offer
+  // Create a demo offer (offer 1 on listing 3 - Craftsman Bungalow, seller2)
   storage.createOffer({
     listingId: 3, buyerId: buyer1.id, amount: 560000, status: "pending",
     message: "We love this home! Our family is very interested. We're pre-approved and can close in 30 days.",
     contingencies: JSON.stringify(["Inspection", "Financing", "Appraisal"]),
-    closingDate: "2026-05-15"
+    closingDate: "2026-05-15",
+    financingType: "conventional", downPaymentPercent: 20, earnestMoney: 5600, closingDays: 30,
+  });
+
+  // Create a SECOND offer on the same listing (listing 3) from a different buyer — for offer comparison demo
+  // Create a second demo buyer
+  const buyer2 = storage.createUser({ email: "jennifer@example.com", password: demoHash, fullName: "Jennifer Walsh", phone: "813-555-0505", role: "buyer", location: "Tampa, FL", bio: "Relocating from Atlanta, cash buyer." });
+  storage.createOffer({
+    listingId: 3, buyerId: buyer2.id, amount: 572000, status: "pending",
+    message: "We are cash buyers relocating from Atlanta. Can close in 21 days, no financing contingency.",
+    contingencies: JSON.stringify(["Inspection"]),
+    closingDate: "2026-04-26",
+    financingType: "cash", downPaymentPercent: 100, earnestMoney: 10000, closingDays: 21,
+  });
+
+  // Create a third offer on listing 3
+  const buyer3 = storage.createUser({ email: "robert@example.com", password: demoHash, fullName: "Robert Nguyen", phone: "813-555-0606", role: "buyer", location: "Clearwater, FL", bio: "First time home buyer." });
+  storage.createOffer({
+    listingId: 3, buyerId: buyer3.id, amount: 551000, status: "pending",
+    message: "We are a young family that fell in love with this neighborhood. FHA financing, ready to make it work.",
+    contingencies: JSON.stringify(["Inspection", "Financing", "Appraisal", "Sale of Current Home"]),
+    closingDate: "2026-06-01",
+    financingType: "fha", downPaymentPercent: 3.5, earnestMoney: 3000, closingDays: 45,
   });
 
   // Create a demo walkthrough
   storage.createWalkthrough({
     listingId: 1, buyerId: buyer1.id, scheduledDate: "2026-04-10", scheduledTime: "2:00 PM",
     status: "requested", chaperonePayment: 20, buyerNotes: "Would love to see the dock area and kitchen."
+  });
+
+  // Additional walkthroughs in various statuses
+  storage.createWalkthrough({
+    listingId: 2, buyerId: buyer2.id, scheduledDate: "2026-04-12", scheduledTime: "11:00 AM",
+    status: "assigned", chaperonePayment: 20, chaperoneId: chaperone1.id,
+  });
+  storage.createWalkthrough({
+    listingId: 4, buyerId: buyer3.id, scheduledDate: "2026-04-20", scheduledTime: "3:00 PM",
+    status: "requested", chaperonePayment: 20,
   });
 
   // Create demo messages for offer negotiation
@@ -291,6 +323,12 @@ function seedDatabase() {
   storage.updateOffer(1, { status: "accepted" });
 
   // Create a transaction (listing 3 is the Craftsman Bungalow at $585,000)
+  // Set closing date within 7 days of seeding for closing-prep demo
+  const closingDateDemo = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 5);
+    return d.toISOString().split("T")[0];
+  })();
   const salePrice = 560000;
   const txn = storage.createTransaction({
     listingId: 3,
@@ -300,7 +338,7 @@ function seedDatabase() {
     salePrice,
     platformFee: Math.round(salePrice * 0.01),
     status: "in_progress",
-    closingDate: "2026-05-15",
+    closingDate: closingDateDemo,
     escrowStatus: "opened",
     titleStatus: "ordered",
     inspectionStatus: "in_progress",
@@ -383,6 +421,28 @@ function seedDatabase() {
   for (const msg of escrowMsgs) {
     storage.createPortalMessage({ transactionId: txn.id, portal: "escrow", userId: buyer1.id, role: msg.role, content: msg.content });
   }
+
+  // Seed a demo repair request
+  storage.createRepairRequest({
+    transactionId: txn.id,
+    status: "pending",
+    buyerItems: JSON.stringify([
+      { finding: "Roof damage — multiple shingles missing", type: "credit", estimatedCost: 10000 },
+      { finding: "Electrical panel — double-tapped breakers", type: "repair", estimatedCost: 1650 },
+      { finding: "Water heater at end of useful life", type: "credit", estimatedCost: 1200 },
+    ]),
+    buyerNotes: "Please address these items before closing. The roof and electrical issues are safety concerns.",
+  });
+
+  // Notify seller of repair request
+  storage.createNotification({
+    userId: seller2.id,
+    type: "repair_request",
+    title: "Repair Request Received",
+    message: "The buyer has submitted a repair request with $12,850 in requested credits/repairs.",
+    relatedUrl: `/transaction/${txn.id}/inspection`,
+    read: 0,
+  });
 }
 
 // Portal AI response generator (rule-based with OpenAI fallback)
@@ -1716,5 +1776,183 @@ export function registerRoutes(server: Server, app: Express) {
       console.error("Advisor chat error:", error);
       res.status(500).json({ message: "Failed to get AI response" });
     }
+  });
+
+  // ========== AI PRICE SUGGESTION ==========
+  app.post("/api/ai/price-suggestion", async (req, res) => {
+    try {
+      const { address, city, state, beds, baths, sqft, yearBuilt, propertyType } = req.body;
+      if (!sqft) return res.status(400).json({ message: "sqft required" });
+
+      // Rule-based estimate (Florida / Tampa area)
+      let basePricePerSqft = 200;
+
+      // Waterfront/beach premium
+      const combined = `${address || ""} ${city || ""}`.toLowerCase();
+      if (combined.includes("bay") || combined.includes("beach") || combined.includes("gulf") ||
+          combined.includes("water") || combined.includes("shore") || combined.includes("isle")) {
+        basePricePerSqft *= 1.15;
+      }
+
+      // Age adjustment
+      const yr = parseInt(yearBuilt || "2000");
+      if (yr > 2015) basePricePerSqft *= 1.10;
+      else if (yr < 1970) basePricePerSqft *= 0.90;
+
+      // Condo adjustment
+      if (propertyType === "condo") basePricePerSqft *= 0.95;
+      if (propertyType === "townhouse") basePricePerSqft *= 1.02;
+
+      const sqftNum = parseInt(sqft);
+      const suggestedPrice = Math.round(basePricePerSqft * sqftNum / 1000) * 1000;
+      const low = Math.round(suggestedPrice * 0.95 / 1000) * 1000;
+      const high = Math.round(suggestedPrice * 1.05 / 1000) * 1000;
+
+      // Try DeepSeek if available
+      if (process.env.DEEPSEEK_API_KEY) {
+        try {
+          const dsRes = await fetch("https://api.deepseek.com/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
+            body: JSON.stringify({
+              model: "deepseek-chat",
+              messages: [{
+                role: "system",
+                content: "You are a real estate pricing expert for the Tampa Bay, Florida area. Provide a realistic price suggestion based on property details. Respond with JSON only in the format: {\"suggestedPrice\": number, \"low\": number, \"high\": number, \"rationale\": string}"
+              }, {
+                role: "user",
+                content: `Price this property: ${beds} bed / ${baths} bath / ${sqft} sqft / built ${yearBuilt} / ${propertyType} at ${address}, ${city}, ${state}`
+              }],
+              max_tokens: 300,
+              temperature: 0.3,
+            }),
+          });
+          if (dsRes.ok) {
+            const dsData = await dsRes.json() as any;
+            const content = dsData.choices?.[0]?.message?.content || "";
+            const parsed = JSON.parse(content.replace(/```json\n?|```/g, "").trim());
+            if (parsed.suggestedPrice) {
+              return res.json({
+                suggestedPrice: parsed.suggestedPrice,
+                priceRange: { low: parsed.low || low, high: parsed.high || high },
+                rationale: parsed.rationale || `Based on ${sqft} sqft at ${city}, ${state} area comparables.`,
+                comparables: [
+                  { address: `Similar home nearby`, sqft: sqftNum, price: suggestedPrice, pricePerSqft: Math.round(basePricePerSqft) },
+                ],
+                netProceeds: Math.round(parsed.suggestedPrice * 0.99 - suggestedPrice * 0.02),
+              });
+            }
+          }
+        } catch { /* fall through to rule-based */ }
+      }
+
+      const rationale = [
+        `Based on ${sqft} sqft at ~$${Math.round(basePricePerSqft)}/sqft for ${city || "Tampa Bay"} area`,
+        yr > 2015 ? "(+10% for newer construction post-2015)" : yr < 1970 ? "(-10% for pre-1970 construction)" : "",
+        combined.includes("bay") || combined.includes("beach") || combined.includes("gulf") ? "(+15% waterfront/beach premium)" : "",
+      ].filter(Boolean).join(". ");
+
+      res.json({
+        suggestedPrice,
+        priceRange: { low, high },
+        rationale,
+        comparables: [
+          { address: `Comparable A — ${city || "Tampa"}`, sqft: Math.round(sqftNum * 0.95), price: Math.round(suggestedPrice * 0.97), pricePerSqft: Math.round(basePricePerSqft * 0.97) },
+          { address: `Comparable B — ${city || "Tampa"}`, sqft: sqftNum, price: suggestedPrice, pricePerSqft: Math.round(basePricePerSqft) },
+          { address: `Comparable C — ${city || "Tampa"}`, sqft: Math.round(sqftNum * 1.05), price: Math.round(suggestedPrice * 1.03), pricePerSqft: Math.round(basePricePerSqft * 1.03) },
+        ],
+        netProceeds: Math.round(suggestedPrice * 0.99 - suggestedPrice * 0.015),
+      });
+    } catch (error: any) {
+      console.error("Price suggestion error:", error);
+      res.status(500).json({ message: "Failed to generate price suggestion" });
+    }
+  });
+
+  // ========== REPAIR REQUESTS ==========
+  app.get("/api/transactions/:id/repair-request", requireAuth, (req, res) => {
+    const txnId = parseInt(req.params.id);
+    const repairReq = storage.getRepairRequestByTransaction(txnId);
+    if (!repairReq) return res.status(404).json({ message: "No repair request found" });
+    res.json(repairReq);
+  });
+
+  app.post("/api/transactions/:id/repair-request", requireAuth, (req, res) => {
+    const txnId = parseInt(req.params.id);
+    const { items, notes } = req.body;
+    if (!items || !Array.isArray(items)) return res.status(400).json({ message: "items array required" });
+
+    const txn = storage.getTransaction(txnId);
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+    // Create or update repair request
+    const existing = storage.getRepairRequestByTransaction(txnId);
+    let repairReq;
+    if (existing) {
+      repairReq = storage.updateRepairRequest(existing.id, {
+        buyerItems: JSON.stringify(items),
+        buyerNotes: notes || "",
+        status: "pending",
+      });
+    } else {
+      repairReq = storage.createRepairRequest({
+        transactionId: txnId,
+        buyerItems: JSON.stringify(items),
+        buyerNotes: notes || "",
+        status: "pending",
+      });
+    }
+
+    // Notify the seller
+    const totalCredit = items.reduce((sum: number, item: any) => sum + (item.estimatedCost || 0), 0);
+    storage.createNotification({
+      userId: txn.sellerId,
+      type: "repair_request",
+      title: "Repair Request Received",
+      message: `The buyer has submitted a repair request with $${totalCredit.toLocaleString()} in requested credits/repairs.`,
+      relatedUrl: `/transaction/${txnId}/inspection`,
+      read: 0,
+    });
+
+    res.json(repairReq);
+  });
+
+  app.post("/api/transactions/:id/repair-response", requireAuth, (req, res) => {
+    const txnId = parseInt(req.params.id);
+    const { responses, notes } = req.body;
+    if (!responses || !Array.isArray(responses)) return res.status(400).json({ message: "responses array required" });
+
+    const txn = storage.getTransaction(txnId);
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+    const existing = storage.getRepairRequestByTransaction(txnId);
+    if (!existing) return res.status(404).json({ message: "No repair request found" });
+
+    // Calculate agreed credits
+    const agreedCredits = responses
+      .filter((r: any) => r.decision === "accept")
+      .reduce((sum: number, r: any) => sum + (r.counterAmount || r.estimatedCost || 0), 0);
+
+    const hasCounters = responses.some((r: any) => r.decision === "counter");
+    const allAccepted = responses.every((r: any) => r.decision === "accept");
+
+    const repairReq = storage.updateRepairRequest(existing.id, {
+      sellerResponse: JSON.stringify(responses),
+      sellerNotes: notes || "",
+      agreedCredits: agreedCredits.toString(),
+      status: allAccepted ? "accepted" : hasCounters ? "countered" : "responded",
+    });
+
+    // Notify the buyer
+    storage.createNotification({
+      userId: txn.buyerId,
+      type: "repair_response",
+      title: "Seller Responded to Repair Request",
+      message: `The seller has responded to your repair request. Agreed credits: $${agreedCredits.toLocaleString()}.`,
+      relatedUrl: `/transaction/${txnId}/inspection`,
+      read: 0,
+    });
+
+    res.json(repairReq);
   });
 }

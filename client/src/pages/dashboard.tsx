@@ -10,12 +10,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ListingCard } from "@/components/listing-card";
+import { SellerNetSheet } from "@/components/seller-net-sheet";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Home, FileText, MessageSquare, Eye, DollarSign, Bot, Clock, ArrowRight, Plus, MapPin,
-  CheckCircle2, Circle, AlertCircle, Check, X, MessageCircle, Edit, ExternalLink, Loader2
+  CheckCircle2, Circle, AlertCircle, Check, X, MessageCircle, Edit, ExternalLink, Loader2,
+  BarChart2, Star
 } from "lucide-react";
 import type { Listing, Offer, Walkthrough, Transaction, Document as Doc } from "@shared/schema";
 
@@ -124,12 +127,150 @@ function CounterOfferDialog({
   );
 }
 
+// Offer Comparison Modal
+function OfferCompareModal({
+  offers,
+  myListings,
+  open,
+  onClose,
+}: {
+  offers: Offer[];
+  myListings: Listing[];
+  open: boolean;
+  onClose: () => void;
+}) {
+  // Group offers by listingId and show the one with multiple
+  const grouped = offers.reduce<Record<number, Offer[]>>((acc, o) => {
+    if (!acc[o.listingId]) acc[o.listingId] = [];
+    acc[o.listingId].push(o);
+    return acc;
+  }, {});
+
+  const multipleOfferListings = Object.entries(grouped)
+    .filter(([, list]) => list.length >= 2)
+    .map(([listingId, offerList]) => ({
+      listingId: parseInt(listingId),
+      offers: offerList,
+      listing: myListings.find(l => l.id === parseInt(listingId)),
+    }));
+
+  function getBestOffer(offerList: Offer[]) {
+    // Score: cash > conventional > fha > va, fewer contingencies, shorter close, higher price
+    const scored = offerList.map(o => {
+      const contingencies = (() => { try { return JSON.parse(o.contingencies || "[]"); } catch { return []; } })();
+      let score = o.amount;
+      const ftype = (o as any).financingType || "conventional";
+      if (ftype === "cash") score += 15000;
+      else if (ftype === "conventional") score += 5000;
+      score -= contingencies.length * 2000;
+      score -= ((o as any).closingDays || 30) * 100;
+      return { offer: o, score };
+    });
+    return scored.sort((a, b) => b.score - a.score)[0]?.offer;
+  }
+
+  function getNetProceeds(price: number) {
+    // Florida costs: 1% platform + 0.7% doc stamps + 0.575% title + recording + etc.
+    return Math.round(price * (1 - 0.01 - 0.007 - 0.00575) - 200 - 350);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl w-full">
+        <DialogHeader>
+          <DialogTitle>Compare Offers</DialogTitle>
+          <DialogDescription>Side-by-side comparison of all offers on your listings</DialogDescription>
+        </DialogHeader>
+        {multipleOfferListings.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">You need 2 or more offers on the same listing to compare.</p>
+        ) : (
+          multipleOfferListings.map(({ listingId, offers: offerList, listing }) => {
+            const best = getBestOffer(offerList);
+            return (
+              <div key={listingId}>
+                <p className="text-sm font-semibold mb-3">{listing?.title || `Listing #${listingId}`}</p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-36">Detail</TableHead>
+                        {offerList.map(o => (
+                          <TableHead key={o.id}>
+                            Offer #{o.id}
+                            {o.id === best?.id && (
+                              <Badge className="ml-1 bg-yellow-100 text-yellow-800 text-[10px]"><Star className="h-2.5 w-2.5 mr-0.5" />Best</Badge>
+                            )}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell className="text-muted-foreground text-xs">Price</TableCell>
+                        {offerList.map(o => (
+                          <TableCell key={o.id} className="font-semibold">{formatPrice(o.amount)}</TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="text-muted-foreground text-xs">Financing</TableCell>
+                        {offerList.map(o => (
+                          <TableCell key={o.id} className="capitalize">{(o as any).financingType || "Conventional"}</TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="text-muted-foreground text-xs">Closing</TableCell>
+                        {offerList.map(o => (
+                          <TableCell key={o.id}>{(o as any).closingDays || 30} days</TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="text-muted-foreground text-xs">Earnest Money</TableCell>
+                        {offerList.map(o => (
+                          <TableCell key={o.id}>{(o as any).earnestMoney ? formatPrice((o as any).earnestMoney) : "—"}</TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="text-muted-foreground text-xs">Contingencies</TableCell>
+                        {offerList.map(o => {
+                          const cont = (() => { try { return JSON.parse(o.contingencies || "[]"); } catch { return []; } })();
+                          return <TableCell key={o.id} className="text-xs">{cont.length > 0 ? cont.join(", ") : "None"}</TableCell>;
+                        })}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="text-muted-foreground text-xs">Net Proceeds</TableCell>
+                        {offerList.map(o => (
+                          <TableCell key={o.id} className="font-semibold text-primary">{formatPrice(getNetProceeds(o.amount))}</TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="text-muted-foreground text-xs">AI Rec.</TableCell>
+                        {offerList.map(o => (
+                          <TableCell key={o.id}>
+                            {o.id === best?.id ? (
+                              <Badge className="bg-yellow-100 text-yellow-800 text-[10px]"><Star className="h-2.5 w-2.5 mr-0.5" />Best Overall</Badge>
+                            ) : <span className="text-muted-foreground text-xs">—</span>}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [counterOffer, setCounterOffer] = useState<Offer | null>(null);
+  const [showCompare, setShowCompare] = useState(false);
 
   const { data: myListings = [] } = useQuery<Listing[]>({
     queryKey: ["/api/listings/seller", user?.id],
@@ -316,8 +457,23 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Compare button if 2+ offers on same listing */}
+              {(() => {
+                const grouped = sellerOffers.reduce<Record<number, number>>((acc, o) => { acc[o.listingId] = (acc[o.listingId] || 0) + 1; return acc; }, {});
+                const hasMultiple = Object.values(grouped).some(c => c >= 2);
+                return hasMultiple ? (
+                  <div className="flex justify-end">
+                    <Button size="sm" variant="outline" onClick={() => setShowCompare(true)} data-testid="button-compare-offers">
+                      <BarChart2 className="mr-1 h-3.5 w-3.5" /> Compare Offers
+                    </Button>
+                  </div>
+                ) : null;
+              })()}
+
               {sellerOffers.map((offer) => {
                 const isActionable = offer.status === "pending" || offer.status === "countered";
+                // Find the listing for this offer to get HOA/tax info
+                const listing = myListings.find(l => l.id === offer.listingId);
                 return (
                   <Card key={offer.id} className="p-4" data-testid={`card-seller-offer-${offer.id}`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -325,10 +481,19 @@ export default function Dashboard() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-semibold">{formatPrice(offer.amount)}</span>
                           <Badge variant="outline" className={statusColors[offer.status]}>{offer.status}</Badge>
+                          {(offer as any).financingType && (
+                            <Badge variant="secondary" className="text-[10px] capitalize">{(offer as any).financingType}</Badge>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           Listing #{offer.listingId} — Received {offer.createdAt?.split("T")[0]}
+                          {(offer as any).closingDays && ` — ${(offer as any).closingDays}-day close`}
                         </p>
+                        {(offer as any).earnestMoney && (
+                          <p className="text-xs text-muted-foreground">
+                            Earnest money: {formatPrice((offer as any).earnestMoney)}
+                          </p>
+                        )}
                         {offer.message && (
                           <p className="mt-1.5 text-xs text-foreground/80 border-l-2 border-muted pl-2 italic">
                             "{offer.message}"
@@ -339,6 +504,14 @@ export default function Dashboard() {
                             Proposed closing: {offer.closingDate}
                           </p>
                         )}
+                        {/* Net Sheet */}
+                        <div className="mt-3">
+                          <SellerNetSheet
+                            offerPrice={offer.amount}
+                            hoaFee={listing?.hoaFee}
+                            taxAmount={listing?.taxAmount}
+                          />
+                        </div>
                       </div>
                       {isActionable ? (
                         <div className="flex items-center gap-2 flex-wrap">
@@ -555,6 +728,14 @@ export default function Dashboard() {
           }}
         />
       )}
+
+      {/* Offer Compare Modal */}
+      <OfferCompareModal
+        offers={sellerOffers}
+        myListings={myListings}
+        open={showCompare}
+        onClose={() => setShowCompare(false)}
+      />
     </div>
   );
 }

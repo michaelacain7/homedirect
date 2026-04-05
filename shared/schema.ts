@@ -65,6 +65,12 @@ export const offers = sqliteTable("offers", {
   closingDate: text("closing_date"),
   counterAmount: real("counter_amount"),
   counterMessage: text("counter_message"),
+  // Enhanced offer fields
+  financingType: text("financing_type").default("conventional"), // cash | conventional | fha | va
+  downPaymentPercent: real("down_payment_percent"),
+  earnestMoney: real("earnest_money"),
+  closingDays: integer("closing_days").default(30),
+  escalationMax: real("escalation_max"),
   createdAt: text("created_at").notNull().default(""),
 });
 
@@ -309,3 +315,20 @@ export const portalDocuments = sqliteTable("portal_documents", {
 export const insertPortalDocumentSchema = createInsertSchema(portalDocuments).omit({ id: true, createdAt: true });
 export type InsertPortalDocument = z.infer<typeof insertPortalDocumentSchema>;
 export type PortalDocument = typeof portalDocuments.$inferSelect;
+
+// ── Repair Requests ──────────────────────────────────────────────────────
+export const repairRequests = sqliteTable("repair_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  transactionId: integer("transaction_id").notNull(),
+  status: text("status").notNull().default("pending"), // pending | responded | accepted | countered
+  buyerItems: text("buyer_items").notNull(), // JSON array of { finding, type, estimatedCost }
+  buyerNotes: text("buyer_notes"),
+  sellerResponse: text("seller_response"), // JSON array of { finding, decision, counterAmount }
+  sellerNotes: text("seller_notes"),
+  agreedCredits: text("agreed_credits"),
+  createdAt: text("created_at").default(""),
+});
+
+export const insertRepairRequestSchema = createInsertSchema(repairRequests).omit({ id: true, createdAt: true });
+export type InsertRepairRequest = z.infer<typeof insertRepairRequestSchema>;
+export type RepairRequest = typeof repairRequests.$inferSelect;

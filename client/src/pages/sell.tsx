@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, ArrowRight, Camera, Check, DollarSign, MapPin, HomeIcon, Bot, X, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, Check, DollarSign, MapPin, HomeIcon, Bot, X, Upload, Sparkles, Loader2, TrendingUp } from "lucide-react";
 
 const STEPS = ["Property Details", "Description & Features", "Photos & Pricing", "Review & List"];
 
@@ -22,6 +22,14 @@ export default function Sell() {
   const [uploading, setUploading] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [aiPriceSuggestion, setAiPriceSuggestion] = useState<null | {
+    suggestedPrice: number;
+    priceRange: { low: number; high: number };
+    rationale: string;
+    comparables: Array<{ address: string; sqft: number; price: number; pricePerSqft: number }>;
+    netProceeds: number;
+  }>(null);
+  const [loadingPrice, setLoadingPrice] = useState(false);
   const [form, setForm] = useState({
     title: "", description: "", address: "", city: "", state: "FL", zip: "",
     price: "", bedrooms: "", bathrooms: "", sqft: "", lotSize: "",
@@ -113,6 +121,33 @@ export default function Sell() {
 
   const platformFee = form.price ? parseFloat(form.price) * 0.01 : 0;
   const traditionalFee = form.price ? parseFloat(form.price) * 0.06 : 0;
+
+  const getAIPrice = async () => {
+    if (!form.sqft) return toast({ title: "Enter sqft first", description: "We need the square footage to estimate a price.", variant: "destructive" });
+    setLoadingPrice(true);
+    try {
+      const res = await apiRequest("POST", "/api/ai/price-suggestion", {
+        address: form.address,
+        city: form.city,
+        state: form.state,
+        beds: form.bedrooms,
+        baths: form.bathrooms,
+        sqft: form.sqft,
+        yearBuilt: form.yearBuilt,
+        propertyType: form.propertyType,
+      });
+      const data = await res.json();
+      setAiPriceSuggestion(data);
+      // Auto-fill price with suggested
+      if (data.suggestedPrice && !form.price) {
+        update("price", data.suggestedPrice.toString());
+      }
+    } catch (e: any) {
+      toast({ title: "AI pricing unavailable", description: "Using manual pricing mode.", variant: "destructive" });
+    } finally {
+      setLoadingPrice(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8" data-testid="page-sell">
@@ -289,6 +324,65 @@ export default function Sell() {
               <p className="mt-2 text-xs text-muted-foreground text-center">
                 No photos uploaded — placeholder images will be used
               </p>
+            )}
+          </div>
+
+          {/* AI Price Suggestion */}
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full border-primary/40 text-primary hover:bg-primary/5"
+              onClick={getAIPrice}
+              disabled={loadingPrice}
+              data-testid="button-ai-price"
+            >
+              {loadingPrice ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing property...</>  
+              ) : (
+                <><Sparkles className="mr-2 h-4 w-4" /> Get AI Price Suggestion</>  
+              )}
+            </Button>
+
+            {aiPriceSuggestion && (
+              <Card className="p-4 border-primary/20 bg-primary/5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary">AI Recommended Price</span>
+                </div>
+                <div className="text-center py-1">
+                  <p className="text-2xl font-bold">
+                    ${aiPriceSuggestion.priceRange.low.toLocaleString()} — ${aiPriceSuggestion.priceRange.high.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Suggested: ${aiPriceSuggestion.suggestedPrice.toLocaleString()}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">{aiPriceSuggestion.rationale}</p>
+
+                {/* Comparables */}
+                <div className="space-y-1">
+                  <p className="text-xs font-medium">Comparable Sales:</p>
+                  {aiPriceSuggestion.comparables.map((comp, i) => (
+                    <div key={i} className="flex justify-between text-xs text-muted-foreground">
+                      <span>{comp.address}</span>
+                      <span>${comp.price.toLocaleString()} · ${comp.pricePerSqft}/sqft</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 p-2.5 text-xs">
+                  <span className="text-green-700 dark:text-green-400 font-medium">Estimated net proceeds after 1% fee:</span>
+                  <span className="font-bold text-green-700 dark:text-green-400">${aiPriceSuggestion.netProceeds.toLocaleString()}</span>
+                </div>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => update("price", aiPriceSuggestion.suggestedPrice.toString())}
+                >
+                  <TrendingUp className="mr-1.5 h-3.5 w-3.5" /> Use Suggested Price
+                </Button>
+              </Card>
             )}
           </div>
 

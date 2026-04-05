@@ -421,6 +421,33 @@ export default function TransactionHub() {
         </div>
       </div>
 
+      {/* Closing Prep Banner — shown when closing is within 7 days */}
+      {daysToClose <= 7 && (
+        <div className="mt-6">
+          <Card
+            className="p-5 cursor-pointer border-green-300 bg-green-50/50 hover:shadow-md transition-all"
+            style={{ borderRadius: "16px" }}
+            onClick={() => setLocation(`/transaction/${params?.id}/closing-prep`)}
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-3 rounded-xl bg-green-100 border border-green-300">
+                <Home className="h-6 w-6 text-green-700" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-green-800">Closing Day Preparation</h3>
+                  <Badge className="bg-red-100 text-red-700 text-xs">{daysToClose === 0 ? "Today!" : `${daysToClose} days`}</Badge>
+                </div>
+                <p className="text-xs text-green-700 mt-0.5">
+                  Your closing is coming up! Review what to bring, what to expect, and your post-closing checklist.
+                </p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-green-600" />
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Platform fee info */}
       <div className="mt-6 p-4 rounded-xl border border-primary/20 bg-primary/5">
         <div className="flex items-center gap-3">

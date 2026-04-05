@@ -33,6 +33,12 @@ export default function ListingDetail() {
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const [offerAmount, setOfferAmount] = useState("");
   const [offerMessage, setOfferMessage] = useState("");
+  const [offerFinancingType, setOfferFinancingType] = useState("conventional");
+  const [offerDownPayment, setOfferDownPayment] = useState("20");
+  const [offerEarnestMoney, setOfferEarnestMoney] = useState("");
+  const [offerClosingDays, setOfferClosingDays] = useState("30");
+  const [offerContingencies, setOfferContingencies] = useState<string[]>(["Inspection", "Financing", "Appraisal"]);
+  const [offerEscalationMax, setOfferEscalationMax] = useState("");
   const [wtDate, setWtDate] = useState("");
   const [wtTime, setWtTime] = useState("");
   const [wtNotes, setWtNotes] = useState("");
@@ -77,11 +83,18 @@ export default function ListingDetail() {
   const submitOffer = async () => {
     if (!user) return toast({ title: "Sign in required", description: "Please sign in to make an offer.", variant: "destructive" });
     try {
+      const closingDaysNum = parseInt(offerClosingDays) || 30;
+      const closingDate = new Date(Date.now() + closingDaysNum * 86400000).toISOString().split("T")[0];
       await apiRequest("POST", "/api/offers", {
         listingId: listing.id, buyerId: user.id,
         amount: parseFloat(offerAmount), message: offerMessage,
-        contingencies: JSON.stringify(["Inspection", "Financing", "Appraisal"]),
-        closingDate: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
+        contingencies: JSON.stringify(offerContingencies),
+        closingDate,
+        financingType: offerFinancingType,
+        downPaymentPercent: parseFloat(offerDownPayment) || 20,
+        earnestMoney: offerEarnestMoney ? parseFloat(offerEarnestMoney) : Math.round(parseFloat(offerAmount) * 0.01),
+        closingDays: closingDaysNum,
+        escalationMax: offerEscalationMax ? parseFloat(offerEscalationMax) : null,
       });
       toast({ title: "Offer submitted", description: "Your AI agent will guide you through the negotiation process." });
       setShowOffer(false);
@@ -329,26 +342,118 @@ export default function ListingDetail() {
 
       {/* Offer Modal */}
       <Dialog open={showOffer} onOpenChange={setShowOffer}>
-        <DialogContent data-testid="dialog-offer">
+        <DialogContent className="max-w-lg" data-testid="dialog-offer">
           <DialogHeader>
             <DialogTitle>Make an Offer</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
             <p className="text-xs text-muted-foreground">
               Your AI agent will submit this offer and guide you through negotiation.
               Listing price: {formatPrice(listing.price)}
             </p>
-            <div className="space-y-2">
-              <Label>Offer Amount</Label>
+
+            {/* Offer Amount */}
+            <div className="space-y-1.5">
+              <Label>Offer Amount ($)</Label>
               <Input type="number" placeholder={listing.price.toString()} value={offerAmount} onChange={e => setOfferAmount(e.target.value)} data-testid="input-offer-amount" />
             </div>
-            <div className="space-y-2">
+
+            {/* Financing */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Financing Type</Label>
+                <Select value={offerFinancingType} onValueChange={setOfferFinancingType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="conventional">Conventional</SelectItem>
+                    <SelectItem value="fha">FHA</SelectItem>
+                    <SelectItem value="va">VA</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {offerFinancingType !== "cash" && (
+                <div className="space-y-1.5">
+                  <Label>Down Payment (%)</Label>
+                  <Input type="number" placeholder="20" value={offerDownPayment} onChange={e => setOfferDownPayment(e.target.value)} />
+                </div>
+              )}
+            </div>
+
+            {/* Earnest Money & Closing */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Earnest Money ($)</Label>
+                <Input
+                  type="number"
+                  placeholder={offerAmount ? Math.round(parseFloat(offerAmount) * 0.01).toString() : "5000"}
+                  value={offerEarnestMoney}
+                  onChange={e => setOfferEarnestMoney(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Closing Timeline</Label>
+                <Select value={offerClosingDays} onValueChange={setOfferClosingDays}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="21">21 days</SelectItem>
+                    <SelectItem value="30">30 days</SelectItem>
+                    <SelectItem value="45">45 days</SelectItem>
+                    <SelectItem value="60">60 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Contingencies */}
+            <div className="space-y-1.5">
+              <Label>Contingencies</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Inspection", "Financing", "Appraisal", "Sale of Current Home"].map(cont => (
+                  <button
+                    key={cont}
+                    type="button"
+                    onClick={() => setOfferContingencies(prev =>
+                      prev.includes(cont) ? prev.filter(c => c !== cont) : [...prev, cont]
+                    )}
+                    className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                      offerContingencies.includes(cont)
+                        ? "bg-primary text-white border-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    {cont}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Escalation Clause */}
+            <div className="space-y-1.5">
+              <Label>Escalation Clause (optional)</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Will beat competing offers up to:</span>
+                <Input
+                  type="number"
+                  placeholder="550000"
+                  value={offerEscalationMax}
+                  onChange={e => setOfferEscalationMax(e.target.value)}
+                  className="flex-1"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">Leave blank if not using escalation</p>
+            </div>
+
+            {/* Message */}
+            <div className="space-y-1.5">
               <Label>Message to Seller (optional)</Label>
-              <Textarea placeholder="Tell the seller why you love their home..." value={offerMessage} onChange={e => setOfferMessage(e.target.value)} data-testid="input-offer-message" />
+              <Textarea placeholder="Tell the seller why you love their home..." value={offerMessage} onChange={e => setOfferMessage(e.target.value)} data-testid="input-offer-message" rows={3} />
             </div>
-            <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-              Standard contingencies will be included: Inspection, Financing, Appraisal. Your AI agent can modify these during negotiation.
-            </div>
+
             <Button className="w-full" onClick={submitOffer} disabled={!offerAmount} data-testid="button-submit-offer">
               <Bot className="mr-2 h-4 w-4" /> Submit Offer
             </Button>
