@@ -1460,6 +1460,61 @@ export function registerRoutes(server: Server, app: Express) {
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
 
+  // ── Chaperone App Mobile Endpoints ──────────────────────────────────
+
+  // GET /api/chaperone/app/status — chaperone's current status, active gig, balance, stats
+  app.get("/api/chaperone/app/status", requireAuth, (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const walkthroughs = storage.getWalkthroughsByChaperone(userId);
+      const activeGig = walkthroughs.find((w: any) => w.status === "assigned") || null;
+      const payouts = storage.getChaperonePayouts(userId);
+      const completedEarnings = payouts
+        .filter((p: any) => p.type === "earning" && p.status === "completed")
+        .reduce((s: number, p: any) => s + p.amount, 0);
+      const withdrawals = Math.abs(payouts
+        .filter((p: any) => p.type === "payout")
+        .reduce((s: number, p: any) => s + p.amount, 0));
+      const balance = completedEarnings - withdrawals;
+      const completedShowings = walkthroughs.filter((w: any) => w.status === "completed").length;
+
+      res.json({
+        isOnline: false,
+        activeGig,
+        balance,
+        totalEarnings: completedEarnings,
+        completedShowings,
+        rating: 4.8,
+      });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  // PATCH /api/chaperone/app/online — toggle online/offline (stateless stub)
+  app.patch("/api/chaperone/app/online", requireAuth, (req, res) => {
+    const { online } = req.body;
+    res.json({ online: !!online });
+  });
+
+  // GET /api/chaperone/app/active-gig — get the current accepted gig with full listing details
+  app.get("/api/chaperone/app/active-gig", requireAuth, (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const walkthroughs = storage.getWalkthroughsByChaperone(userId);
+      const activeWalkthrough = walkthroughs.find((w: any) => w.status === "assigned");
+      if (!activeWalkthrough) return res.json(null);
+
+      const listing = storage.getListing(activeWalkthrough.listingId);
+      res.json({ ...activeWalkthrough, listing: listing || null });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  // POST /api/chaperone/app/gig/:id/checklist — update checklist items for active gig
+  app.post("/api/chaperone/app/gig/:id/checklist", requireAuth, (req, res) => {
+    // Stateless checklist stored client-side; this endpoint acknowledges the update
+    const { items } = req.body;
+    res.json({ id: parseInt(req.params.id), items: items || [] });
+  });
+
   // ── Payment Routes ──────────────────────────────────────────────────
 
   // POST /api/payments/walkthrough — charge buyer $20 for walkthrough

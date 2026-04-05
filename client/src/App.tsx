@@ -1,4 +1,4 @@
-import { Switch, Route, Router } from "wouter";
+import { Switch, Route, Router, useLocation } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -27,6 +27,7 @@ import EditListing from "@/pages/edit-listing";
 import AdminDashboard from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 import { AIAdvisor } from "@/components/ai-advisor";
+import ChaperoneApp from "@/pages/chaperone-app/index";
 
 function AppRouter() {
   return (
@@ -53,6 +54,24 @@ function AppRouter() {
   );
 }
 
+function ChaperoneAppRouteGuard() {
+  const [location] = useLocation();
+
+  if (location.startsWith("/chaperone-app")) {
+    return <ChaperoneApp />;
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col" data-testid="app-root">
+      <Header />
+      <main className="flex-1">
+        <AppRouter />
+      </main>
+      <AIAdvisor />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -60,13 +79,7 @@ export default function App() {
         <ThemeProvider>
           <AuthProvider>
             <Router hook={useHashLocation}>
-              <div className="flex min-h-screen flex-col" data-testid="app-root">
-                <Header />
-                <main className="flex-1">
-                  <AppRouter />
-                </main>
-                <AIAdvisor />
-              </div>
+              <ChaperoneAppRouteGuard />
             </Router>
           </AuthProvider>
         </ThemeProvider>
