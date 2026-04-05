@@ -2,7 +2,7 @@
   "name": "HomeDirectAI Chaperone",
   "short_name": "Chaperone",
   "description": "Earn $20 per showing. The DoorDash of real estate tours.",
-  "start_url": "/#/chaperone-app",
+  "start_url": "/chaperone-app",
   "display": "standalone",
   "background_color": "#0d1a12",
   "theme_color": "#2D7A4F",
