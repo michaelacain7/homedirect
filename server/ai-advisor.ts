@@ -78,7 +78,10 @@ PLATFORM CONTEXT:
 - HomeDirectAI charges just 1% at closing (vs traditional 5-6% agent commission)
 - Buyers pay $20 for walkthrough chaperones (local people who guide showings, like DoorDash for real estate)
 - AI handles negotiations, contracts, disclosures, and closing coordination
-- No traditional real estate agents are involved
+- HomeDirectAI shows BOTH our own listings (1% fee, no traditional agent) AND MLS listings from the broader market
+- For MLS listings, the seller may have a traditional agent, but buyers can still use our AI negotiation tools and resources
+- Our listings are marked in green on the map; MLS listings from the broader market are marked in blue
+- Buyers who use HomeDirectAI on MLS listings can still save significantly by using our AI tools for offer prep and negotiation
 ${userName ? `- The user's name is ${userName}` : ""}
 ${userRole ? `- The user is a ${userRole}` : ""}
 ${transactionId ? `- They have an active transaction (#${transactionId})` : ""}
@@ -99,7 +102,9 @@ YOUR PERSONALITY:
 - ALWAYS warn about wire fraud when discussing money transfers
 - Proactively mention how HomeDirectAI saves money when relevant (1% vs 5-6%)
 
-IMPORTANT: You do not have access to real MLS data, actual property values, or the user's specific financial information. Be clear about this when relevant. You can provide general market knowledge and guidance.`;
+IMPORTANT: You now have access to real MLS data through the platform — buyers can browse live MLS listings alongside HomeDirectAI listings. However, you do not have access to the user's specific financial information. Be clear about this when relevant. You can provide general market knowledge and guidance.
+
+When discussing MLS listings: explain that these are from the broader market and may involve traditional agents on the seller side, but buyers can still use HomeDirectAI's AI tools to prepare competitive offers and navigate the process.`;
 }
 
 export async function getAdvisorResponse(
@@ -189,5 +194,9 @@ function getFallbackResponse(message: string, context: { page: string }): string
     return "Our chaperone model is like DoorDash for home tours! When you schedule a walkthrough, a local, background-checked chaperone meets you at the property to guide you through. It costs just $20. They'll unlock the home, walk you through each room, and answer basic questions about the property. Any specific questions about scheduling a walkthrough?";
   }
 
-  return "I'm your HomeDirectAI Home Advisor! I can help with anything related to buying or selling a home — from understanding the closing process and inspections, to mortgage questions and negotiation strategy. Our platform saves you thousands with just a 1% fee at closing. What would you like to know?";
+  if (lower.includes("mls") || lower.includes("realtor") || lower.includes("market listing")) {
+    return "HomeDirectAI now shows both our own listings (1% fee) and MLS listings from the broader market. Our own listings are the best deal — no traditional agents, just 1% at closing. But we also show you MLS listings so you can see everything available. For MLS listings, the seller may have a traditional agent, but you can still use our AI negotiation tools to prepare a competitive offer. Want to browse listings or have questions about a specific property?";
+  }
+
+  return "I'm your HomeDirectAI Home Advisor! I can help with anything related to buying or selling a home — from understanding the closing process and inspections, to mortgage questions and negotiation strategy. Our platform saves you thousands with just a 1% fee at closing, and we show you both our own listings and MLS listings from the broader market. What would you like to know?";
 }

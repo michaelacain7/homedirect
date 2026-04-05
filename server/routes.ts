@@ -6,6 +6,7 @@ import { createPaymentIntent, TEST_MODE } from "./payments";
 import { sendNewOfferEmail, sendOfferStatusEmail, sendWalkthroughScheduledEmail, sendWalkthroughAssignedEmail, sendDocumentReadyEmail } from "./email";
 import { getAINegotiationResponse } from "./ai-negotiation";
 import { getAdvisorResponse } from "./ai-advisor";
+import { searchMLSListings } from "./mls-api";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -1657,6 +1658,33 @@ export function registerRoutes(server: Server, app: Express) {
     if (!existing) return res.status(404).json({ message: "Listing not found" });
     storage.deleteListing(listingId);
     res.json({ success: true });
+  });
+
+  // ========== MLS LISTINGS (Realtor16 via RapidAPI) ==========
+  app.get("/api/mls/search", async (req, res) => {
+    try {
+      const {
+        location,
+        minPrice, maxPrice, minBeds,
+        sort, limit, offset, propertyType,
+      } = req.query as Record<string, string>;
+
+      const listings = await searchMLSListings({
+        location: location || "Tampa, FL",
+        minPrice: minPrice ? parseFloat(minPrice) : undefined,
+        maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
+        minBeds: minBeds ? parseFloat(minBeds) : undefined,
+        sort: sort || "newest",
+        limit: limit ? parseInt(limit) : 20,
+        offset: offset ? parseInt(offset) : 0,
+        propertyType: propertyType || undefined,
+      });
+
+      res.json({ listings, total: listings.length, source: "mls" });
+    } catch (error: any) {
+      console.error("MLS search error:", error);
+      res.status(500).json({ message: "MLS search failed", listings: [], total: 0 });
+    }
   });
 
   // ========== AI HOME ADVISOR (global chat) ==========
