@@ -5,6 +5,7 @@ import { insertUserSchema, insertListingSchema, insertOfferSchema, insertWalkthr
 import { createPaymentIntent, TEST_MODE } from "./payments";
 import { sendNewOfferEmail, sendOfferStatusEmail, sendWalkthroughScheduledEmail, sendWalkthroughAssignedEmail, sendDocumentReadyEmail } from "./email";
 import { getAINegotiationResponse } from "./ai-negotiation";
+import { getAdvisorResponse } from "./ai-advisor";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import multer from "multer";
@@ -1601,5 +1602,35 @@ export function registerRoutes(server: Server, app: Express) {
     if (!existing) return res.status(404).json({ message: "Listing not found" });
     storage.deleteListing(listingId);
     res.json({ success: true });
+  });
+
+  // ========== AI HOME ADVISOR (global chat) ==========
+  app.post("/api/advisor/chat", async (req, res) => {
+    try {
+      const { message, history, context } = req.body;
+      if (!message) return res.status(400).json({ message: "message required" });
+
+      const user = req.isAuthenticated() ? (req.user as any) : null;
+      const advisorContext = {
+        page: context?.page || "/",
+        userRole: user?.role || context?.userRole,
+        userName: user?.fullName?.split(" ")[0] || undefined,
+        transactionId: context?.transactionId,
+        listingAddress: context?.listingAddress,
+        offerAmount: context?.offerAmount,
+        listingPrice: context?.listingPrice,
+      };
+
+      const response = await getAdvisorResponse(
+        message,
+        history || [],
+        advisorContext
+      );
+
+      res.json({ response });
+    } catch (error: any) {
+      console.error("Advisor chat error:", error);
+      res.status(500).json({ message: "Failed to get AI response" });
+    }
   });
 }

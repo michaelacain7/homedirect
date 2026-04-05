@@ -26,6 +26,7 @@ import PortalTitle from "@/pages/portal-title";
 import EditListing from "@/pages/edit-listing";
 import AdminDashboard from "@/pages/admin";
 import NotFound from "@/pages/not-found";
+import { AIAdvisor } from "@/components/ai-advisor";
 
 function AppRouter() {
   return (
@@ -64,6 +65,7 @@ export default function App() {
                 <main className="flex-1">
                   <AppRouter />
                 </main>
+                <AIAdvisor />
               </div>
             </Router>
           </AuthProvider>
