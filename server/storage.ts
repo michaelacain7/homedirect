@@ -5,6 +5,7 @@ import {
   users, listings, offers, walkthroughs, documents, messages, transactions, savedSearches, favorites,
   chaperoneApplications, chaperonePayouts, payments, notifications,
   transactionChecklist, portalMessages, portalDocuments, repairRequests,
+  professionalAccess, professionalMessages, professionalDocuments,
   type User, type InsertUser,
   type Listing, type InsertListing,
   type Offer, type InsertOffer,
@@ -22,6 +23,9 @@ import {
   type PortalMessage, type InsertPortalMessage,
   type PortalDocument, type InsertPortalDocument,
   type RepairRequest, type InsertRepairRequest,
+  type ProfessionalAccess, type InsertProfessionalAccess,
+  type ProfessionalMessage, type InsertProfessionalMessage,
+  type ProfessionalDocument, type InsertProfessionalDocument,
 } from "@shared/schema";
 
 const sqlite = new Database("data.db");
@@ -252,6 +256,42 @@ sqlite.exec(`
     agreed_credits TEXT,
     created_at TEXT DEFAULT ''
   );
+  CREATE TABLE IF NOT EXISTS professional_access (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_id INTEGER NOT NULL,
+    listing_id INTEGER,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    company TEXT,
+    email TEXT NOT NULL,
+    phone TEXT,
+    access_token TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'invited',
+    created_at TEXT DEFAULT '',
+    expires_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS professional_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    professional_access_id INTEGER NOT NULL,
+    sender_type TEXT NOT NULL,
+    sender_name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    attachment_url TEXT,
+    attachment_name TEXT,
+    created_at TEXT DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS professional_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    professional_access_id INTEGER NOT NULL,
+    transaction_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    file_url TEXT NOT NULL,
+    uploaded_by TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'uploaded',
+    notes TEXT,
+    created_at TEXT DEFAULT ''
+  );
 `);
 
 // Add new columns to offers if they don't exist (migration for existing DBs)
@@ -403,6 +443,23 @@ export interface IStorage {
   getAllListings(): Listing[];
   getAllTransactions(): Transaction[];
   getPlatformStats(): { totalUsers: number; totalListings: number; activeTransactions: number; totalRevenue: number; totalPayouts: number };
+
+  // Professional Access
+  getProfessionalAccess(id: number): ProfessionalAccess | undefined;
+  getProfessionalAccessByToken(token: string): ProfessionalAccess | undefined;
+  getProfessionalsByTransaction(transactionId: number): ProfessionalAccess[];
+  createProfessionalAccess(data: InsertProfessionalAccess): ProfessionalAccess;
+  updateProfessionalAccess(id: number, data: Partial<InsertProfessionalAccess>): ProfessionalAccess | undefined;
+  deleteProfessionalAccess(id: number): void;
+
+  // Professional Messages
+  getProfessionalMessages(professionalAccessId: number): ProfessionalMessage[];
+  createProfessionalMessage(msg: InsertProfessionalMessage): ProfessionalMessage;
+
+  // Professional Documents
+  getProfessionalDocuments(professionalAccessId: number): ProfessionalDocument[];
+  createProfessionalDocument(doc: InsertProfessionalDocument): ProfessionalDocument;
+  updateProfessionalDocument(id: number, data: Partial<InsertProfessionalDocument>): ProfessionalDocument | undefined;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -795,6 +852,53 @@ export class DatabaseStorage implements IStorage {
 
   updateRepairRequest(id: number, data: Partial<InsertRepairRequest>): RepairRequest | undefined {
     return db.update(repairRequests).set(data).where(eq(repairRequests.id, id)).returning().get();
+  }
+
+  // ── Professional Access ──
+  getProfessionalAccess(id: number): ProfessionalAccess | undefined {
+    return db.select().from(professionalAccess).where(eq(professionalAccess.id, id)).get();
+  }
+
+  getProfessionalAccessByToken(token: string): ProfessionalAccess | undefined {
+    return db.select().from(professionalAccess).where(eq(professionalAccess.accessToken, token)).get();
+  }
+
+  getProfessionalsByTransaction(transactionId: number): ProfessionalAccess[] {
+    return db.select().from(professionalAccess).where(eq(professionalAccess.transactionId, transactionId)).orderBy(desc(professionalAccess.createdAt)).all();
+  }
+
+  createProfessionalAccess(data: InsertProfessionalAccess): ProfessionalAccess {
+    return db.insert(professionalAccess).values({ ...data, createdAt: new Date().toISOString() }).returning().get();
+  }
+
+  updateProfessionalAccess(id: number, data: Partial<InsertProfessionalAccess>): ProfessionalAccess | undefined {
+    return db.update(professionalAccess).set(data).where(eq(professionalAccess.id, id)).returning().get();
+  }
+
+  deleteProfessionalAccess(id: number): void {
+    db.delete(professionalAccess).where(eq(professionalAccess.id, id)).run();
+  }
+
+  // ── Professional Messages ──
+  getProfessionalMessages(professionalAccessId: number): ProfessionalMessage[] {
+    return db.select().from(professionalMessages).where(eq(professionalMessages.professionalAccessId, professionalAccessId)).orderBy(asc(professionalMessages.createdAt)).all();
+  }
+
+  createProfessionalMessage(msg: InsertProfessionalMessage): ProfessionalMessage {
+    return db.insert(professionalMessages).values({ ...msg, createdAt: new Date().toISOString() }).returning().get();
+  }
+
+  // ── Professional Documents ──
+  getProfessionalDocuments(professionalAccessId: number): ProfessionalDocument[] {
+    return db.select().from(professionalDocuments).where(eq(professionalDocuments.professionalAccessId, professionalAccessId)).orderBy(desc(professionalDocuments.createdAt)).all();
+  }
+
+  createProfessionalDocument(doc: InsertProfessionalDocument): ProfessionalDocument {
+    return db.insert(professionalDocuments).values({ ...doc, createdAt: new Date().toISOString() }).returning().get();
+  }
+
+  updateProfessionalDocument(id: number, data: Partial<InsertProfessionalDocument>): ProfessionalDocument | undefined {
+    return db.update(professionalDocuments).set(data).where(eq(professionalDocuments.id, id)).returning().get();
   }
 
   // ── Admin ──

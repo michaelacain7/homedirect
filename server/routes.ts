@@ -3,7 +3,7 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { insertUserSchema, insertListingSchema, insertOfferSchema, insertWalkthroughSchema, insertDocumentSchema, insertMessageSchema, insertTransactionSchema, insertSavedSearchSchema, insertFavoriteSchema, insertChaperoneApplicationSchema, insertChaperonePayoutSchema } from "@shared/schema";
 import { createPaymentIntent, TEST_MODE } from "./payments";
-import { sendNewOfferEmail, sendOfferStatusEmail, sendWalkthroughScheduledEmail, sendWalkthroughAssignedEmail, sendDocumentReadyEmail } from "./email";
+import { sendNewOfferEmail, sendOfferStatusEmail, sendWalkthroughScheduledEmail, sendWalkthroughAssignedEmail, sendDocumentReadyEmail, sendEmail } from "./email";
 import { getAINegotiationResponse } from "./ai-negotiation";
 import { getAdvisorResponse } from "./ai-advisor";
 import { chat, hasLLMProvider } from "./ai-engine";
@@ -16,6 +16,7 @@ import { passport } from "./auth";
 import fs from "fs";
 import path from "path";
 import { generatePurchaseAgreement, generateSellerDisclosure, generateClosingDisclosure } from "./documents";
+import crypto from "crypto";
 
 // Ensure uploads directory exists
 if (!fs.existsSync("./uploads")) {
@@ -33,6 +34,20 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith("image/")) cb(null, true);
     else cb(new Error("Only images allowed"));
+  },
+});
+
+// Multer for professional document uploads (images + PDFs)
+const proUpload = multer({
+  storage: multer.diskStorage({
+    destination: "./uploads",
+    filename: (req, file, cb) =>
+      cb(null, `pro-${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9.]/g, "_")}`),
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/") || file.mimetype === "application/pdf") cb(null, true);
+    else cb(new Error("Only images and PDFs allowed"));
   },
 });
 
@@ -444,6 +459,111 @@ function seedDatabase() {
     message: "The buyer has submitted a repair request with $12,850 in requested credits/repairs.",
     relatedUrl: `/transaction/${txn.id}/inspection`,
     read: 0,
+  });
+
+  // ── Seed Professional Access ──
+  const proTokens = {
+    inspector: "demo-inspector-token-0001-0000000000001",
+    appraiser: "demo-appraiser-token-002-0000000000002",
+    lender:    "demo-lender-token-00003-0000000000003",
+    title:     "demo-title-company-0004-0000000000004",
+    photographer: "demo-photographer-005-0000000000005",
+  };
+
+  const expiresAt90 = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  const inspector = storage.createProfessionalAccess({
+    transactionId: txn.id, listingId: txn.listingId,
+    type: "inspector", name: "David Martinez", company: "ProHome Inspections",
+    email: "david@prohome.com", phone: "813-555-1001",
+    accessToken: proTokens.inspector, status: "active", expiresAt: expiresAt90,
+  });
+  const appraiser = storage.createProfessionalAccess({
+    transactionId: txn.id, listingId: txn.listingId,
+    type: "appraiser", name: "Jennifer Walsh", company: "Metro Appraisals",
+    email: "jwalsh@metroappraisals.com", phone: "813-555-1002",
+    accessToken: proTokens.appraiser, status: "active", expiresAt: expiresAt90,
+  });
+  const lender = storage.createProfessionalAccess({
+    transactionId: txn.id, listingId: txn.listingId,
+    type: "lender", name: "Marcus Johnson", company: "First Federal Mortgage",
+    email: "mjohnson@firstfederal.com", phone: "813-555-1003",
+    accessToken: proTokens.lender, status: "active", expiresAt: expiresAt90,
+  });
+  const titleCo = storage.createProfessionalAccess({
+    transactionId: txn.id, listingId: txn.listingId,
+    type: "title", name: "Maria Gonzalez", company: "First Title Trust",
+    email: "mgonzalez@firsttitletrust.com", phone: "813-555-1004",
+    accessToken: proTokens.title, status: "active", expiresAt: expiresAt90,
+  });
+  const photographer = storage.createProfessionalAccess({
+    transactionId: txn.id, listingId: txn.listingId,
+    type: "photographer", name: "Alex Rivera", company: "HomeSnap Photography",
+    email: "alex@homesnap.com", phone: "813-555-1005",
+    accessToken: proTokens.photographer, status: "completed", expiresAt: expiresAt90,
+  });
+
+  // Seed professional messages
+  const buyerName = "Michael Cain";
+  const sellerName = "James Chen";
+
+  storage.createProfessionalMessage({
+    professionalAccessId: inspector.id,
+    senderType: "system", senderName: "HomeDirectAI",
+    content: "Welcome, David! This is your inspection portal for 725 15th Ave NE, St. Petersburg, FL. The buyer is Michael Cain and the seller is James Chen. Please upload your inspection report when complete.",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: inspector.id,
+    senderType: "buyer", senderName: buyerName,
+    content: "Hi David, looking forward to your report. Please pay special attention to the roof and foundation — this is an older Craftsman home from 1925.",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: inspector.id,
+    senderType: "professional", senderName: "David Martinez",
+    content: "Hi Michael, absolutely. I'll be thorough on all systems given the age of the home. I'll note the condition of the original plumbing and electrical as well. Inspection is scheduled for tomorrow at 9 AM.",
+  });
+
+  storage.createProfessionalMessage({
+    professionalAccessId: lender.id,
+    senderType: "system", senderName: "HomeDirectAI",
+    content: "Welcome, Marcus! This is the lender portal for Michael Cain's purchase at 725 15th Ave NE, St. Petersburg, FL. The purchase price is $560,000.",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: lender.id,
+    senderType: "buyer", senderName: buyerName,
+    content: "Hi Marcus, just checking in on the loan status. Any updates on the appraisal order?",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: lender.id,
+    senderType: "professional", senderName: "Marcus Johnson",
+    content: "Hi Michael! The loan is progressing well. We've ordered the appraisal and you should hear back within 7–10 business days. Currently in Underwriting. Conditional approval expected by end of week.",
+  });
+
+  storage.createProfessionalMessage({
+    professionalAccessId: titleCo.id,
+    senderType: "system", senderName: "HomeDirectAI",
+    content: "Welcome, Maria! This is the title portal for the transaction at 725 15th Ave NE, St. Petersburg, FL. Buyer: Michael Cain. Seller: James Chen. Purchase price: $560,000.",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: titleCo.id,
+    senderType: "seller", senderName: sellerName,
+    content: "Hi Maria, I wanted to confirm — we'll need to get the payoff statement from my mortgage lender. Do you need anything else from me before closing?",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: titleCo.id,
+    senderType: "professional", senderName: "Maria Gonzalez",
+    content: "Hi James, yes please provide the payoff statement and a valid government-issued ID. Also, do you have an HOA for this property? If so, we'll need the HOA demand letter. I'll follow up with exact wire instructions once the closing disclosure is ready.",
+  });
+
+  storage.createProfessionalMessage({
+    professionalAccessId: photographer.id,
+    senderType: "professional", senderName: "Alex Rivera",
+    content: "Hi! Photos are complete and uploaded. Shot list is 100% done — 47 photos total including exterior, interior, and aerial drone shots. You should see them in the portal.",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: photographer.id,
+    senderType: "seller", senderName: sellerName,
+    content: "These look amazing Alex, thank you! The drone shots especially came out fantastic.",
   });
 }
 
@@ -1947,5 +2067,245 @@ export function registerRoutes(server: Server, app: Express) {
     });
 
     res.json(repairReq);
+  });
+
+  // ========== PROFESSIONAL PORTAL ==========
+
+  // Invite a professional to a transaction
+  app.post("/api/transactions/:id/invite-professional", requireAuth, async (req, res) => {
+    const txnId = parseInt(req.params.id);
+    const { type, name, company, email, phone } = req.body;
+    if (!type || !name || !email) return res.status(400).json({ message: "type, name, and email required" });
+
+    const txn = storage.getTransaction(txnId);
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+    // Authorization: must be buyer or seller
+    const user = req.user as any;
+    if (txn.buyerId !== user.id && txn.sellerId !== user.id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const listing = storage.getListing(txn.listingId);
+    const buyer = storage.getUser(txn.buyerId);
+    const seller = storage.getUser(txn.sellerId);
+
+    // Generate unique access token
+    const accessToken = crypto.randomUUID();
+    // Expires in 90 days
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+    const proAccess = storage.createProfessionalAccess({
+      transactionId: txnId,
+      listingId: txn.listingId,
+      type,
+      name,
+      company: company || null,
+      email,
+      phone: phone || null,
+      accessToken,
+      status: "invited",
+      expiresAt,
+    });
+
+    // Send invitation email
+    const appUrl = process.env.APP_URL || "https://homedirectai.com";
+    const portalLink = `${appUrl}/#/pro/${accessToken}`;
+    const address = listing ? `${listing.address}, ${listing.city}, ${listing.state}` : "Property";
+    const typeLabels: Record<string, string> = {
+      inspector: "Home Inspector",
+      appraiser: "Appraiser",
+      lender: "Lender",
+      title: "Title Company",
+      photographer: "Photographer",
+    };
+    const roleLabel = typeLabels[type] || type;
+
+    try {
+      await sendEmail(
+        email,
+        "HomeDirectAI — You\'ve been invited to a transaction",
+        `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+          <h2 style="color:#1a7a4a">You\'ve Been Invited</h2>
+          <p>Hi ${name},</p>
+          <p>You\'ve been invited to participate in a real estate transaction on <strong>HomeDirectAI</strong>.</p>
+          <table style="border-collapse:collapse;margin:16px 0;width:100%">
+            <tr><td style="padding:6px 0;color:#666">Property:</td><td style="padding:6px 0"><strong>${address}</strong></td></tr>
+            <tr><td style="padding:6px 0;color:#666">Your Role:</td><td style="padding:6px 0"><strong>${roleLabel}</strong></td></tr>
+            <tr><td style="padding:6px 0;color:#666">Transaction:</td><td style="padding:6px 0">${buyer?.fullName || "Buyer"} purchasing from ${seller?.fullName || "Seller"}</td></tr>
+          </table>
+          <p>Access your portal here:</p>
+          <a href="${portalLink}" style="background:#1a7a4a;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:12px 0;font-size:16px">
+            Open My Portal
+          </a>
+          <p style="color:#666;font-size:14px">This link is unique to you and this transaction. No login required.</p>
+          <p><strong>What you can do:</strong></p>
+          <ul>
+            <li>Upload documents</li>
+            <li>Chat with the buyer and seller</li>
+            <li>View property and transaction details</li>
+          </ul>
+          <p style="color:#999;font-size:12px">This link expires in 90 days.</p>
+          <p>— HomeDirectAI</p>
+        </div>
+        `
+      );
+    } catch (e) {
+      console.error("Failed to send invitation email:", e);
+    }
+
+    res.json(proAccess);
+  });
+
+  // List professionals for a transaction
+  app.get("/api/transactions/:id/professionals", requireAuth, (req, res) => {
+    const txnId = parseInt(req.params.id);
+    const txn = storage.getTransaction(txnId);
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+    const user = req.user as any;
+    if (txn.buyerId !== user.id && txn.sellerId !== user.id && user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const pros = storage.getProfessionalsByTransaction(txnId);
+    res.json(pros);
+  });
+
+  // Revoke professional access
+  app.delete("/api/transactions/:id/professionals/:proId", requireAuth, (req, res) => {
+    const txnId = parseInt(req.params.id);
+    const proId = parseInt(req.params.proId);
+    const txn = storage.getTransaction(txnId);
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+    const user = req.user as any;
+    if (txn.buyerId !== user.id && txn.sellerId !== user.id && user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const updated = storage.updateProfessionalAccess(proId, { status: "revoked" });
+    res.json(updated);
+  });
+
+  // Send message from buyer/seller to professional
+  app.post("/api/transactions/:id/pro-message/:proId", requireAuth, (req, res) => {
+    const txnId = parseInt(req.params.id);
+    const proId = parseInt(req.params.proId);
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ message: "content required" });
+
+    const txn = storage.getTransaction(txnId);
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+    const user = req.user as any;
+    if (txn.buyerId !== user.id && txn.sellerId !== user.id && user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const proAccess = storage.getProfessionalAccess(proId);
+    if (!proAccess || proAccess.transactionId !== txnId) {
+      return res.status(404).json({ message: "Professional not found" });
+    }
+
+    const senderType = txn.buyerId === user.id ? "buyer" : "seller";
+    const msg = storage.createProfessionalMessage({
+      professionalAccessId: proId,
+      senderType,
+      senderName: user.fullName,
+      content,
+    });
+    res.json(msg);
+  });
+
+  // ── Token-based professional portal routes (no auth required) ──
+
+  // Validate token and get portal info
+  app.get("/api/pro/:token/info", (req, res) => {
+    const { token } = req.params;
+    const proAccess = storage.getProfessionalAccessByToken(token);
+    if (!proAccess) return res.status(404).json({ message: "Invalid or expired portal link" });
+    if (proAccess.status === "revoked") return res.status(403).json({ message: "This portal access has been revoked" });
+    if (proAccess.expiresAt && new Date(proAccess.expiresAt) < new Date()) {
+      return res.status(403).json({ message: "This portal link has expired" });
+    }
+
+    const txn = storage.getTransaction(proAccess.transactionId);
+    if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+    const listing = storage.getListing(txn.listingId);
+    const buyer = storage.getUser(txn.buyerId);
+    const seller = storage.getUser(txn.sellerId);
+
+    // Mark as active on first access
+    if (proAccess.status === "invited") {
+      storage.updateProfessionalAccess(proAccess.id, { status: "active" });
+    }
+
+    res.json({
+      professional: { ...proAccess, status: proAccess.status === "invited" ? "active" : proAccess.status },
+      transaction: txn,
+      listing,
+      buyer: buyer ? { id: buyer.id, fullName: buyer.fullName, phone: buyer.phone } : null,
+      seller: seller ? { id: seller.id, fullName: seller.fullName, phone: seller.phone } : null,
+    });
+  });
+
+  // Get messages for a professional portal
+  app.get("/api/pro/:token/messages", (req, res) => {
+    const { token } = req.params;
+    const proAccess = storage.getProfessionalAccessByToken(token);
+    if (!proAccess || proAccess.status === "revoked") return res.status(404).json({ message: "Invalid portal link" });
+    const msgs = storage.getProfessionalMessages(proAccess.id);
+    res.json(msgs);
+  });
+
+  // Send message from professional
+  app.post("/api/pro/:token/messages", (req, res) => {
+    const { token } = req.params;
+    const { content, attachmentUrl, attachmentName } = req.body;
+    if (!content) return res.status(400).json({ message: "content required" });
+
+    const proAccess = storage.getProfessionalAccessByToken(token);
+    if (!proAccess || proAccess.status === "revoked") return res.status(404).json({ message: "Invalid portal link" });
+
+    const msg = storage.createProfessionalMessage({
+      professionalAccessId: proAccess.id,
+      senderType: "professional",
+      senderName: proAccess.name,
+      content,
+      attachmentUrl: attachmentUrl || null,
+      attachmentName: attachmentName || null,
+    });
+    res.json(msg);
+  });
+
+  // Upload document via professional portal
+  app.post("/api/pro/:token/upload", proUpload.single("file"), (req, res) => {
+    const { token } = req.params;
+    const proAccess = storage.getProfessionalAccessByToken(token);
+    if (!proAccess || proAccess.status === "revoked") return res.status(404).json({ message: "Invalid portal link" });
+
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const { docType, docName } = req.body;
+    const fileUrl = `/uploads/${req.file.filename}`;
+
+    const doc = storage.createProfessionalDocument({
+      professionalAccessId: proAccess.id,
+      transactionId: proAccess.transactionId,
+      type: docType || "document",
+      name: docName || req.file.originalname,
+      fileUrl,
+      uploadedBy: proAccess.name,
+      status: "uploaded",
+    });
+
+    res.json({ url: fileUrl, document: doc });
+  });
+
+  // List documents for a professional portal
+  app.get("/api/pro/:token/documents", (req, res) => {
+    const { token } = req.params;
+    const proAccess = storage.getProfessionalAccessByToken(token);
+    if (!proAccess || proAccess.status === "revoked") return res.status(404).json({ message: "Invalid portal link" });
+    const docs = storage.getProfessionalDocuments(proAccess.id);
+    res.json(docs);
   });
 }

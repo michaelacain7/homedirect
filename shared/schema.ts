@@ -332,3 +332,57 @@ export const repairRequests = sqliteTable("repair_requests", {
 export const insertRepairRequestSchema = createInsertSchema(repairRequests).omit({ id: true, createdAt: true });
 export type InsertRepairRequest = z.infer<typeof insertRepairRequestSchema>;
 export type RepairRequest = typeof repairRequests.$inferSelect;
+
+// ── Professional Access ──────────────────────────────────────────────────────
+export const professionalAccess = sqliteTable("professional_access", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  transactionId: integer("transaction_id").notNull(),
+  listingId: integer("listing_id"),
+  type: text("type").notNull(), // "inspector", "appraiser", "lender", "title", "photographer"
+  name: text("name").notNull(),
+  company: text("company"),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  accessToken: text("access_token").notNull(),
+  status: text("status").notNull().default("invited"), // invited, active, completed, revoked
+  createdAt: text("created_at").default(""),
+  expiresAt: text("expires_at"),
+});
+
+export const insertProfessionalAccessSchema = createInsertSchema(professionalAccess).omit({ id: true, createdAt: true });
+export type InsertProfessionalAccess = z.infer<typeof insertProfessionalAccessSchema>;
+export type ProfessionalAccess = typeof professionalAccess.$inferSelect;
+
+// ── Professional Messages ────────────────────────────────────────────────────
+export const professionalMessages = sqliteTable("professional_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  professionalAccessId: integer("professional_access_id").notNull(),
+  senderType: text("sender_type").notNull(), // "professional", "buyer", "seller", "system"
+  senderName: text("sender_name").notNull(),
+  content: text("content").notNull(),
+  attachmentUrl: text("attachment_url"),
+  attachmentName: text("attachment_name"),
+  createdAt: text("created_at").default(""),
+});
+
+export const insertProfessionalMessageSchema = createInsertSchema(professionalMessages).omit({ id: true, createdAt: true });
+export type InsertProfessionalMessage = z.infer<typeof insertProfessionalMessageSchema>;
+export type ProfessionalMessage = typeof professionalMessages.$inferSelect;
+
+// ── Professional Documents ───────────────────────────────────────────────────
+export const professionalDocuments = sqliteTable("professional_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  professionalAccessId: integer("professional_access_id").notNull(),
+  transactionId: integer("transaction_id").notNull(),
+  type: text("type").notNull(), // "inspection_report", "appraisal_report", "loan_estimate", "closing_disclosure", "title_commitment", "photos"
+  name: text("name").notNull(),
+  fileUrl: text("file_url").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  status: text("status").notNull().default("uploaded"), // uploaded, reviewed, approved
+  notes: text("notes"),
+  createdAt: text("created_at").default(""),
+});
+
+export const insertProfessionalDocumentSchema = createInsertSchema(professionalDocuments).omit({ id: true, createdAt: true });
+export type InsertProfessionalDocument = z.infer<typeof insertProfessionalDocumentSchema>;
+export type ProfessionalDocument = typeof professionalDocuments.$inferSelect;

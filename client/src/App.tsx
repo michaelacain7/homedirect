@@ -29,6 +29,7 @@ import ClosingPrep from "@/pages/closing-prep";
 import NotFound from "@/pages/not-found";
 import { AIAdvisor } from "@/components/ai-advisor";
 import ChaperoneApp from "@/pages/chaperone-app/index";
+import ProPortal from "@/pages/pro-portal/index";
 
 function AppRouter() {
   return (
@@ -57,10 +58,15 @@ function AppRouter() {
 }
 
 function ChaperoneAppRouteGuard() {
-  const [location] = useLocation();
+  const [location] = useHashLocation();
 
   if (location.startsWith("/chaperone-app")) {
     return <ChaperoneApp />;
+  }
+
+  if (location.startsWith("/pro/")) {
+    const token = location.replace("/pro/", "").split("/")[0];
+    return <ProPortal token={token} />;
   }
 
   return (

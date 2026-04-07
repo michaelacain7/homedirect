@@ -1,15 +1,20 @@
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, CheckCircle2, Clock, AlertCircle, Circle,
   Search, Shield, Building2, BarChart3, FileText, MessageSquare,
-  Home, ChevronRight, Loader2
+  Home, ChevronRight, Loader2, UserPlus, Users, X, Mail, Phone, Camera
 } from "lucide-react";
 import type { Transaction, Listing } from "@shared/schema";
 
@@ -140,6 +145,228 @@ function PortalStatusBadge({ status }: { status: "not_started" | "in_progress" |
   if (status === "complete") return <Badge className="bg-emerald-100 text-emerald-700 text-xs">Complete</Badge>;
   if (status === "in_progress") return <Badge className="bg-amber-100 text-amber-700 text-xs">In Progress</Badge>;
   return <Badge variant="outline" className="text-muted-foreground text-xs">Not Started</Badge>;
+}
+
+const PRO_TYPES = [
+  { value: "inspector", label: "Inspector", icon: Search, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" },
+  { value: "appraiser", label: "Appraiser", icon: BarChart3, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
+  { value: "lender", label: "Lender", icon: Building2, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
+  { value: "title", label: "Title Company", icon: FileText, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-200" },
+  { value: "photographer", label: "Photographer", icon: Camera, color: "text-pink-600", bg: "bg-pink-50", border: "border-pink-200" },
+];
+
+interface ProfessionalAccessRecord {
+  id: number;
+  type: string;
+  name: string;
+  company: string | null;
+  email: string;
+  phone: string | null;
+  status: string;
+  accessToken: string;
+  createdAt: string | null;
+}
+
+function InviteProfessionalSection({ txnId }: { txnId: number }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [openType, setOpenType] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", company: "", email: "", phone: "" });
+
+  const { data: professionals = [] } = useQuery<ProfessionalAccessRecord[]>({
+    queryKey: ["/api/transactions", txnId, "professionals"],
+    queryFn: () => apiRequest("GET", `/api/transactions/${txnId}/professionals`).then(r => r.json()),
+  });
+
+  const inviteMutation = useMutation({
+    mutationFn: (data: { type: string; name: string; company: string; email: string; phone: string }) =>
+      apiRequest("POST", `/api/transactions/${txnId}/invite-professional`, data).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/transactions", txnId, "professionals"] });
+      setOpenType(null);
+      setForm({ name: "", company: "", email: "", phone: "" });
+      toast({ title: "Invitation Sent", description: "The professional will receive an email with their portal link." });
+    },
+    onError: (e: any) => {
+      toast({ title: "Error", description: e.message || "Failed to send invitation.", variant: "destructive" });
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (proId: number) =>
+      apiRequest("DELETE", `/api/transactions/${txnId}/professionals/${proId}`).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/transactions", txnId, "professionals"] });
+      toast({ title: "Access Revoked" });
+    },
+  });
+
+  const handleInvite = (type: string) => {
+    if (!form.name || !form.email) {
+      toast({ title: "Missing fields", description: "Name and email are required.", variant: "destructive" });
+      return;
+    }
+    inviteMutation.mutate({ type, ...form });
+  };
+
+  const getPros = (type: string) => professionals.filter(p => p.type === type && p.status !== "revoked");
+
+  const statusBadge = (s: string) => {
+    if (s === "active") return <Badge className="bg-green-100 text-green-700 text-xs">Active</Badge>;
+    if (s === "completed") return <Badge className="bg-blue-100 text-blue-700 text-xs">Completed</Badge>;
+    if (s === "invited") return <Badge className="bg-yellow-100 text-yellow-700 text-xs">Invited</Badge>;
+    return <Badge variant="outline" className="text-xs">{s}</Badge>;
+  };
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Users className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-base font-semibold">Invite Professionals</h2>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Give third-party professionals secure, login-free access to collaborate on this transaction.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {PRO_TYPES.map(({ value, label, icon: Icon, color, bg, border }) => {
+          const pros = getPros(value);
+          const isOpen = openType === value;
+          return (
+            <Card
+              key={value}
+              className={`border transition-all ${isOpen ? "border-primary/50 shadow-md" : ""}`}
+              style={{ borderRadius: "14px" }}
+            >
+              <CardContent className="p-4 space-y-3">
+                {/* Header */}
+                <div className="flex items-center gap-2">
+                  <div className={`p-2 rounded-lg ${bg} ${border} border`}>
+                    <Icon className={`h-4 w-4 ${color}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold">{label}</p>
+                    {pros.length > 0 && (
+                      <p className="text-xs text-muted-foreground">{pros.length} invited</p>
+                    )}
+                  </div>
+                  {!isOpen && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => { setOpenType(value); setForm({ name: "", company: "", email: "", phone: "" }); }}
+                    >
+                      <UserPlus className="h-3 w-3" /> Invite
+                    </Button>
+                  )}
+                  {isOpen && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => setOpenType(null)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+
+                {/* Existing professionals */}
+                {pros.length > 0 && (
+                  <div className="space-y-2">
+                    {pros.map(pro => (
+                      <div
+                        key={pro.id}
+                        className="flex items-start gap-2 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-xs"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-white truncate">{pro.name}</p>
+                          {pro.company && <p className="text-gray-500 truncate">{pro.company}</p>}
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {statusBadge(pro.status)}
+                            <a
+                              href={`#/pro/${pro.accessToken}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline"
+                            >
+                              View Portal
+                            </a>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => revokeMutation.mutate(pro.id)}
+                          className="text-gray-400 hover:text-red-500 p-0.5 shrink-0"
+                          title="Revoke access"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Invite Form */}
+                {isOpen && (
+                  <div className="space-y-2 pt-1">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Name *</Label>
+                      <Input
+                        placeholder="Full name"
+                        value={form.name}
+                        onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Company</Label>
+                      <Input
+                        placeholder="Company name (optional)"
+                        value={form.company}
+                        onChange={e => setForm(p => ({ ...p, company: e.target.value }))}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Email *</Label>
+                      <Input
+                        placeholder="professional@example.com"
+                        type="email"
+                        value={form.email}
+                        onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Phone (optional)</Label>
+                      <Input
+                        placeholder="555-000-0000"
+                        value={form.phone}
+                        onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full h-8 text-xs bg-green-600 hover:bg-green-700 gap-1"
+                      onClick={() => handleInvite(value)}
+                      disabled={inviteMutation.isPending}
+                    >
+                      {inviteMutation.isPending ? (
+                        <><Loader2 className="h-3 w-3 animate-spin" /> Sending...</>
+                      ) : (
+                        <><Mail className="h-3 w-3" /> Send Invitation</>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function TransactionHub() {
@@ -420,6 +647,11 @@ export default function TransactionHub() {
           })}
         </div>
       </div>
+
+      {/* Invite Professionals */}
+      {(isBuyer || isSeller) && (
+        <InviteProfessionalSection txnId={txn.id} />
+      )}
 
       {/* Closing Prep Banner — shown when closing is within 7 days */}
       {daysToClose <= 7 && (
