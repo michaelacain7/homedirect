@@ -175,7 +175,9 @@ export function getPortalKnowledge(
     appraisal: `\n## CURRENT CONTEXT — APPRAISAL PORTAL\nYou are assisting a ${userRole} in the Appraisal Portal for the property at ${address} (sale price: ${price}).\nHelp with: how Florida appraisals work, what happens if it comes in low, comparable selection, appraisal gap clauses, reconsideration of value process, sinkhole/flood zone impact on value.`,
     
     title: `\n## CURRENT CONTEXT — TITLE COMPANY PORTAL\nYou are assisting a ${userRole} in the Title Company Portal for the property at ${address} (sale price: ${price}).\nHelp with: title insurance (use Florida rate schedule), title search process, liens, encumbrances, easements, what documents are needed, closing timeline coordination. Calculate actual title insurance costs when asked.`,
-    
+
+    insurance: `\n## CURRENT CONTEXT — INSURANCE PORTAL\nYou are assisting a ${userRole} in the Insurance Portal for the property at ${address} (sale price: ${price}).\nHelp with: homeowner's insurance policy types (HO-3, HO-5, HO-6, HO-8), coverage amounts, deductibles, flood insurance requirements, wind mitigation discounts, 4-point inspections, Florida insurance market, Citizens Property Insurance, bundling discounts, what an insurance binder is and when it's needed for closing. Use Florida-specific insurance knowledge.`,
+
     general: `\n## CURRENT CONTEXT — TRANSACTION HUB\nYou are assisting a ${userRole} in their Transaction Hub for the property at ${address} (sale price: ${price}).\nHelp with: overall transaction checklist, what steps come next, timeline questions, document status, or any real estate question about the transaction.`,
   };
 

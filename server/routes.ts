@@ -468,6 +468,7 @@ function seedDatabase() {
     lender:    "demo-lender-token-00003-0000000000003",
     title:     "demo-title-company-0004-0000000000004",
     photographer: "demo-photographer-005-0000000000005",
+    insurer:      "demo-insurer-token-006-0000000000006",
   };
 
   const expiresAt90 = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
@@ -501,6 +502,12 @@ function seedDatabase() {
     type: "photographer", name: "Alex Rivera", company: "HomeSnap Photography",
     email: "alex@homesnap.com", phone: "813-555-1005",
     accessToken: proTokens.photographer, status: "completed", expiresAt: expiresAt90,
+  });
+  const insurer = storage.createProfessionalAccess({
+    transactionId: txn.id, listingId: txn.listingId,
+    type: "insurer", name: "Sarah Thompson", company: "Sunshine State Insurance",
+    email: "sthompson@sunshineins.com", phone: "813-555-1006",
+    accessToken: proTokens.insurer, status: "active", expiresAt: expiresAt90,
   });
 
   // Seed professional messages
@@ -564,6 +571,22 @@ function seedDatabase() {
     professionalAccessId: photographer.id,
     senderType: "seller", senderName: sellerName,
     content: "These look amazing Alex, thank you! The drone shots especially came out fantastic.",
+  });
+
+  storage.createProfessionalMessage({
+    professionalAccessId: insurer.id,
+    senderType: "system", senderName: "HomeDirectAI",
+    content: "Welcome, Sarah! This is the insurance portal for Michael Cain's purchase at 725 15th Ave NE, St. Petersburg, FL. The purchase price is $560,000. Please provide a homeowner's insurance quote and binder for closing.",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: insurer.id,
+    senderType: "buyer", senderName: buyerName,
+    content: "Hi Sarah, I'd like to get a quote for an HO-3 policy. The home was built in 1925 — will the age of the roof affect the premium?",
+  });
+  storage.createProfessionalMessage({
+    professionalAccessId: insurer.id,
+    senderType: "professional", senderName: "Sarah Thompson",
+    content: "Hi Michael! Great question. Given the home's age, we may need a 4-point inspection (roof, electrical, plumbing, HVAC) to finalize the rate. I'll prepare a preliminary quote based on the listing details. Also, this property is not in a flood zone, so flood insurance won't be required by the lender — but I'd recommend it given Florida's weather.",
   });
 }
 

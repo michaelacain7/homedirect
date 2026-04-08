@@ -23,6 +23,7 @@ import PortalEscrow from "@/pages/portal-escrow";
 import PortalLender from "@/pages/portal-lender";
 import PortalAppraisal from "@/pages/portal-appraisal";
 import PortalTitle from "@/pages/portal-title";
+import PortalInsurance from "@/pages/portal-insurance";
 import EditListing from "@/pages/edit-listing";
 import AdminDashboard from "@/pages/admin";
 import ClosingPrep from "@/pages/closing-prep";
@@ -48,6 +49,7 @@ function AppRouter() {
       <Route path="/transaction/:id/lender" component={PortalLender} />
       <Route path="/transaction/:id/appraisal" component={PortalAppraisal} />
       <Route path="/transaction/:id/title" component={PortalTitle} />
+      <Route path="/transaction/:id/insurance" component={PortalInsurance} />
       <Route path="/transaction/:id/closing-prep" component={ClosingPrep} />
       <Route path="/transaction/:id" component={TransactionHub} />
       <Route path="/edit-listing/:id" component={EditListing} />

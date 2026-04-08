@@ -9,6 +9,7 @@ import AppraiserPortal from "./appraiser";
 import LenderPortal from "./lender";
 import TitlePortal from "./title";
 import PhotographerPortal from "./photographer";
+import InsurerPortal from "./insurer";
 
 const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
 
@@ -66,6 +67,7 @@ const TYPE_LABELS: Record<string, string> = {
   lender: "Lender",
   title: "Title Company",
   photographer: "Photographer",
+  insurer: "Home Insurer",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -74,6 +76,7 @@ const TYPE_COLORS: Record<string, string> = {
   lender: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   title: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   photographer: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200",
+  insurer: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
 };
 
 interface ProPortalProps {
@@ -191,7 +194,10 @@ export default function ProPortal({ token }: ProPortalProps) {
         {professional.type === "photographer" && (
           <PhotographerPortal token={token} portalInfo={data} />
         )}
-        {!["inspector", "appraiser", "lender", "title", "photographer"].includes(professional.type) && (
+        {professional.type === "insurer" && (
+          <InsurerPortal token={token} portalInfo={data} />
+        )}
+        {!["inspector", "appraiser", "lender", "title", "photographer", "insurer"].includes(professional.type) && (
           <div className="max-w-2xl mx-auto p-8 text-center text-gray-500">
             Unknown portal type: {professional.type}
           </div>

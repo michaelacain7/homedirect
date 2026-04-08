@@ -105,6 +105,15 @@ const PORTAL_CARDS = [
     border: "border-rose-200",
   },
   {
+    key: "insurance",
+    icon: Shield,
+    title: "Insurance Portal",
+    description: "Homeowner's insurance coverage and policy",
+    color: "text-cyan-600",
+    bg: "bg-cyan-50",
+    border: "border-cyan-200",
+  },
+  {
     key: "ai",
     icon: MessageSquare,
     title: "AI Assistant",
@@ -134,6 +143,7 @@ function getPortalStatus(txn: Transaction, portalKey: string): "not_started" | "
         : txn.appraisalStatus && txn.appraisalStatus !== "not_started" ? "in_progress"
         : "not_started";
     case "lender":
+    case "insurance":
     case "ai":
       return "in_progress";
     default:
@@ -153,6 +163,7 @@ const PRO_TYPES = [
   { value: "lender", label: "Lender", icon: Building2, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
   { value: "title", label: "Title Company", icon: FileText, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-200" },
   { value: "photographer", label: "Photographer", icon: Camera, color: "text-pink-600", bg: "bg-pink-50", border: "border-pink-200" },
+  { value: "insurer", label: "Home Insurer", icon: Shield, color: "text-cyan-600", bg: "bg-cyan-50", border: "border-cyan-200" },
 ];
 
 interface ProfessionalAccessRecord {
