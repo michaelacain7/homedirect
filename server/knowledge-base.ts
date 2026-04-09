@@ -472,4 +472,3 @@ Real estate transactions can be stressful — that's completely normal. Here's w
 - Take it one step at a time. What's the most pressing concern right now?
 - HomeDirectAI is designed to make this process easier and save you money.`;
 }
-}
