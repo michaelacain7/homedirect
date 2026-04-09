@@ -275,11 +275,55 @@ export const toolDefinitions: ToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_transaction_documents",
+      description: "Get all documents for a transaction, organized by signing status and stage. Use when buyer/seller asks about documents, what needs to be signed, or document status.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+        },
+        required: ["transactionId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "explain_document",
+      description: "Get a detailed plain-English explanation of a specific real estate document — what it is, why it matters, what to look for. Use when buyer/seller asks questions about a document.",
+      parameters: {
+        type: "object",
+        properties: {
+          documentName: { type: "string", description: "Name of the document to explain" },
+          userRole: { type: "string", enum: ["buyer", "seller"], description: "Whether the user is buyer or seller" },
+        },
+        required: ["documentName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_documents_for_signing",
+      description: "Send specific documents to buyer and/or seller for e-signature via DocuSign. REQUIRES USER CONFIRMATION.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+          documentNames: { type: "array", items: { type: "string" }, description: "Names of documents to send for signing" },
+        },
+        required: ["transactionId", "documentNames"],
+      },
+    },
+  },
 ];
 
 // ── Tools that require user confirmation before executing ─────────────────────
 
-const ACTION_TOOLS = new Set(["schedule_walkthrough", "draft_offer"]);
+const ACTION_TOOLS = new Set(["schedule_walkthrough", "draft_offer", "send_documents_for_signing"]);
 
 export function requiresConfirmation(toolName: string): boolean {
   return ACTION_TOOLS.has(toolName);
@@ -555,6 +599,38 @@ export async function executeTool(
         suggestedCounter: suggested,
         closingCostCredit: credit,
         script: `Counter-offer at $${suggested.toLocaleString()}${credit > 0 ? ` with $${credit.toLocaleString()} closing cost credit` : ""}.`,
+      });
+    }
+
+    case "get_transaction_documents": {
+      const { getDocumentSummary } = await import("./document-orchestrator");
+      const summary = getDocumentSummary(args.transactionId);
+      return JSON.stringify(summary);
+    }
+
+    case "explain_document": {
+      const { DOCUMENT_REGISTRY } = await import("./document-orchestrator");
+      const docReq = DOCUMENT_REGISTRY.find(d => d.name.toLowerCase().includes((args.documentName || "").toLowerCase()));
+      if (!docReq) return JSON.stringify({ error: "Document not found in registry", available: DOCUMENT_REGISTRY.map(d => d.name) });
+      return JSON.stringify({
+        name: docReq.name,
+        type: docReq.documentType,
+        stage: docReq.stage,
+        signers: docReq.signers,
+        priority: docReq.priority,
+        explanation: docReq.explanation,
+        description: docReq.description,
+      });
+    }
+
+    case "send_documents_for_signing": {
+      const { sendDocumentsForSigning } = await import("./document-orchestrator");
+      return JSON.stringify({
+        requiresConfirmation: true,
+        action: "send_documents_for_signing",
+        transactionId: args.transactionId,
+        documentNames: args.documentNames,
+        message: `Ready to send ${(args.documentNames || []).length} document(s) for e-signature: ${(args.documentNames || []).join(", ")}. Please confirm.`,
       });
     }
 

@@ -12,6 +12,8 @@ import { getRelevantContext } from "./vector-store";
 import { runAgent, type AgentContext } from "./ai-agent";
 import { runEvalSuite, getEvalCases, getEvalCasesByCategory } from "./ai-eval";
 import { toolDefinitions } from "./ai-tools";
+import { getDocumentSummary, sendDocumentsForSigning, buildTransactionContext, getCurrentStage, getDocumentsForRole, getFullDocumentPlan, DOCUMENT_REGISTRY } from "./document-orchestrator";
+import { isDocuSignConfigured, getEnvelopeStatus, getSigningUrl } from "./docusign";
 import { searchMLSListings } from "./mls-api";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -2214,6 +2216,142 @@ export function registerRoutes(server: Server, app: Express) {
     } catch (error: any) {
       res.status(500).json({ message: "Failed to generate promissory note" });
     }
+  });
+
+  // ========== DOCUSIGN & DOCUMENT ORCHESTRATION ==========
+
+  // Get document plan for a transaction (what needs signing, by whom, at what stage)
+  app.get("/api/transactions/:id/document-plan", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const ctx = buildTransactionContext(txnId);
+      if (!ctx) return res.status(404).json({ message: "Transaction not found" });
+
+      const user = req.user as any;
+      const role = user.id === ctx.transaction.buyerId ? "buyer" : "seller";
+      const stage = getCurrentStage(ctx);
+      const myDocs = getDocumentsForRole(stage, role as "buyer" | "seller", ctx);
+      const fullPlan = getFullDocumentPlan(ctx);
+
+      res.json({
+        currentStage: stage,
+        role,
+        myDocumentsToSign: myDocs.map(d => ({
+          name: d.name, type: d.documentType, priority: d.priority,
+          explanation: d.explanation, description: d.description,
+        })),
+        fullPlan: Object.fromEntries(
+          Object.entries(fullPlan).map(([stage, docs]) => [
+            stage,
+            docs.map(d => ({ name: d.name, signers: d.signers, priority: d.priority })),
+          ])
+        ),
+        docusignEnabled: isDocuSignConfigured(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get document plan" });
+    }
+  });
+
+  // Get signing status for a transaction
+  app.get("/api/transactions/:id/signing-status", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const summary = getDocumentSummary(txnId);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get signing status" });
+    }
+  });
+
+  // Send documents for e-signature
+  app.post("/api/transactions/:id/send-for-signing", requireAuth, async (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const { documentNames } = req.body;
+      if (!documentNames || !Array.isArray(documentNames)) {
+        return res.status(400).json({ message: "documentNames array required" });
+      }
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const returnUrl = `${baseUrl}/#/transaction/${txnId}?signing=complete`;
+
+      const result = await sendDocumentsForSigning(txnId, documentNames, returnUrl);
+
+      res.json({
+        success: true,
+        envelopeId: result.envelopeId,
+        signingUrls: result.signingUrls,
+        usingDocuSign: !result.fallback,
+        message: result.fallback
+          ? "Documents marked for signing in the platform (DocuSign not configured)."
+          : `Documents sent via DocuSign. Signing links generated for ${Object.keys(result.signingUrls).join(", ")}.`,
+      });
+    } catch (error: any) {
+      console.error("Send for signing error:", error);
+      res.status(500).json({ message: error.message || "Failed to send documents for signing" });
+    }
+  });
+
+  // DocuSign envelope status check
+  app.get("/api/docusign/envelope/:envelopeId", requireAuth, async (req, res) => {
+    try {
+      if (!isDocuSignConfigured()) {
+        return res.json({ configured: false, message: "DocuSign not configured" });
+      }
+      const status = await getEnvelopeStatus(req.params.envelopeId);
+      res.json({ configured: true, ...status });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to check envelope status" });
+    }
+  });
+
+  // Get fresh signing URL (if previous expired)
+  app.post("/api/docusign/signing-url", requireAuth, async (req, res) => {
+    try {
+      const { envelopeId, role } = req.body;
+      const user = req.user as any;
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+      const url = await getSigningUrl(
+        envelopeId, user.email, user.fullName, role || user.role,
+        `${baseUrl}/#/dashboard?signing=complete`,
+      );
+      res.json({ url });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate signing URL" });
+    }
+  });
+
+  // DocuSign webhook (status updates)
+  app.post("/api/docusign/webhook", async (req, res) => {
+    try {
+      const event = req.body;
+      console.log(`[DocuSign Webhook] Event: ${event?.event}`, JSON.stringify(event).substring(0, 200));
+
+      if (event?.event === "envelope-completed") {
+        // TODO: Update document status in DB, notify users
+        console.log(`[DocuSign] Envelope ${event.data?.envelopeId} completed`);
+      }
+
+      res.status(200).json({ received: true });
+    } catch (error: any) {
+      console.error("DocuSign webhook error:", error);
+      res.status(200).json({ received: true }); // Always return 200 to DocuSign
+    }
+  });
+
+  // Get the full document registry (all possible documents)
+  app.get("/api/documents/registry", requireAuth, (_req, res) => {
+    res.json({
+      documents: DOCUMENT_REGISTRY.map(d => ({
+        name: d.name, type: d.documentType, stage: d.stage,
+        signers: d.signers, priority: d.priority,
+        description: d.description, explanation: d.explanation,
+        conditional: !!d.condition,
+      })),
+      total: DOCUMENT_REGISTRY.length,
+    });
   });
 
   // List all available document generators
