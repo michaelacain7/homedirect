@@ -1,5 +1,3 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
 import { eq, like, and, gte, lte, desc, asc, or } from "drizzle-orm";
 import {
   users, listings, offers, walkthroughs, documents, messages, transactions, savedSearches, favorites,
@@ -28,11 +26,40 @@ import {
   type ProfessionalDocument, type InsertProfessionalDocument,
 } from "@shared/schema";
 
-const sqlite = new Database("data.db");
-sqlite.pragma("journal_mode = WAL");
+// ── Database Connection (PostgreSQL in production, SQLite for local dev) ──────
+import Database from "better-sqlite3";
+import { drizzle as drizzleSqlite } from "drizzle-orm/better-sqlite3";
+
+let db: any;
+let sqlite: any = null;
+let rawPool: any = null;
+
+if (process.env.DATABASE_URL) {
+  // PostgreSQL (production / Railway)
+  // Dynamic import at startup handled by init function below
+  console.log("[DB] PostgreSQL mode (DATABASE_URL detected)");
+} else {
+  // SQLite (local development)
+  sqlite = new Database("data.db");
+  sqlite.pragma("journal_mode = WAL");
+  db = drizzleSqlite(sqlite);
+  console.log("[DB] Using SQLite (local development — set DATABASE_URL for PostgreSQL)");
+}
+
+// Async init for PostgreSQL (called at startup)
+async function initPostgres() {
+  if (!process.env.DATABASE_URL) return;
+  const pg = await import("pg");
+  const { drizzle: drizzlePg } = await import("drizzle-orm/node-postgres");
+  rawPool = new pg.default.Pool({ connectionString: process.env.DATABASE_URL });
+  db = drizzlePg(rawPool);
+  console.log("[DB] Connected to PostgreSQL");
+}
 
 // Auto-create tables if they don't exist (needed for fresh deploys like Railway)
-sqlite.exec(`
+// For PostgreSQL: uses Drizzle push or raw SQL. For SQLite: uses raw SQL.
+// Raw SQL for table creation (SQLite syntax — converted to PG at runtime)
+const tableSQL = `
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL UNIQUE,
@@ -292,27 +319,56 @@ sqlite.exec(`
     notes TEXT,
     created_at TEXT DEFAULT ''
   );
-`);
+`;
 
-// Add new columns to offers if they don't exist (migration for existing DBs)
-try {
-  sqlite.exec(`ALTER TABLE offers ADD COLUMN financing_type TEXT DEFAULT 'conventional'`);
-} catch {}
-try {
-  sqlite.exec(`ALTER TABLE offers ADD COLUMN down_payment_percent REAL`);
-} catch {}
-try {
-  sqlite.exec(`ALTER TABLE offers ADD COLUMN earnest_money REAL`);
-} catch {}
-try {
-  sqlite.exec(`ALTER TABLE offers ADD COLUMN closing_days INTEGER DEFAULT 30`);
-} catch {}
-try {
-  sqlite.exec(`ALTER TABLE offers ADD COLUMN escalation_max REAL`);
-} catch {}
+async function initializeTables() {
+  // Initialize PostgreSQL connection if needed
+  await initPostgres();
 
+  if (process.env.DATABASE_URL && rawPool) {
+    const client = await rawPool.connect();
+    try {
+      // Convert SQLite SQL to PostgreSQL-compatible
+      const pgSQL = tableSQL
+        .replace(/INTEGER PRIMARY KEY AUTOINCREMENT/g, "SERIAL PRIMARY KEY")
+        .replace(/REAL /g, "DOUBLE PRECISION ");
+      // Execute each CREATE TABLE separately for PG
+      const statements = pgSQL.split(";").filter(s => s.trim().length > 10);
+      for (const stmt of statements) {
+        try { await client.query(stmt + ";"); } catch (e: any) {
+          if (!e.message?.includes("already exists")) console.error("[DB] PG table error:", e.message);
+        }
+      }
+      // Add migration columns for PG
+      const alters = [
+        "ALTER TABLE offers ADD COLUMN IF NOT EXISTS financing_type TEXT DEFAULT 'conventional'",
+        "ALTER TABLE offers ADD COLUMN IF NOT EXISTS down_payment_percent DOUBLE PRECISION",
+        "ALTER TABLE offers ADD COLUMN IF NOT EXISTS earnest_money DOUBLE PRECISION",
+        "ALTER TABLE offers ADD COLUMN IF NOT EXISTS closing_days INTEGER DEFAULT 30",
+        "ALTER TABLE offers ADD COLUMN IF NOT EXISTS escalation_max DOUBLE PRECISION",
+      ];
+      for (const alt of alters) { try { await client.query(alt); } catch {} }
+      console.log("[DB] PostgreSQL tables initialized");
+    } catch (err) {
+      console.error("[DB] PostgreSQL table init error:", err);
+    } finally {
+      client.release();
+    }
+  } else if (sqlite) {
+    // SQLite — execute the same SQL directly (it uses SQLite syntax already)
+    sqlite.exec(tableSQL);
+    // Add migration columns for existing SQLite DBs
+    try { sqlite.exec(`ALTER TABLE offers ADD COLUMN financing_type TEXT DEFAULT 'conventional'`); } catch {}
+    try { sqlite.exec(`ALTER TABLE offers ADD COLUMN down_payment_percent REAL`); } catch {}
+    try { sqlite.exec(`ALTER TABLE offers ADD COLUMN earnest_money REAL`); } catch {}
+    try { sqlite.exec(`ALTER TABLE offers ADD COLUMN closing_days INTEGER DEFAULT 30`); } catch {}
+    try { sqlite.exec(`ALTER TABLE offers ADD COLUMN escalation_max REAL`); } catch {}
+    console.log("[DB] SQLite tables initialized");
+  }
+}
 
-export const db = drizzle(sqlite);
+// Run table initialization
+initializeTables().catch(console.error);
 
 export interface IStorage {
   // Users
