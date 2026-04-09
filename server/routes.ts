@@ -10,8 +10,14 @@ import { chat, chatStream, chatWithTools, chatWithConfidence, hasLLMProvider, ge
 import { getBaseKnowledge, getPortalKnowledge } from "./knowledge-base";
 import { getRelevantContext } from "./vector-store";
 import { runAgent, type AgentContext } from "./ai-agent";
+import { runBuyerAgent } from "./buyer-agent";
+import { runSellerAgent } from "./seller-agent";
 import { runEvalSuite, getEvalCases, getEvalCasesByCategory } from "./ai-eval";
 import { toolDefinitions } from "./ai-tools";
+import { getDocumentSummary, sendDocumentsForSigning, buildTransactionContext, getCurrentStage, getDocumentsForRole, getFullDocumentPlan, analyzeTransactionDocuments, DOCUMENT_REGISTRY } from "./document-orchestrator";
+import { fillDocument, generateFullQuestionnaire, getConfiguredDocuments, isDocumentReady } from "./document-filler";
+import { encrypt, decrypt, encryptObject, decryptObject, prepareForDisplay, decryptForAgent, isEncryptionConfigured } from "./encryption";
+import { isDocuSignConfigured, getEnvelopeStatus, getSigningUrl } from "./docusign";
 import { searchMLSListings } from "./mls-api";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -19,7 +25,7 @@ import multer from "multer";
 import { passport } from "./auth";
 import fs from "fs";
 import path from "path";
-import { generatePurchaseAgreement, generateSellerDisclosure, generateClosingDisclosure } from "./documents";
+import { generatePurchaseAgreement, generateSellerDisclosure, generateClosingDisclosure, generateLeadPaintDisclosure, generateRadonDisclosure, generateFloodZoneDisclosure, generateRepairAddendum, generateFinalWalkthroughChecklist, generateClosingStatement, generatePromissoryNote, generateDeed, generateHOADisclosure, generateInsuranceBinder } from "./documents";
 import crypto from "crypto";
 
 // Ensure uploads directory exists
@@ -592,6 +598,106 @@ function seedDatabase() {
     senderType: "professional", senderName: "Sarah Thompson",
     content: "Hi Michael! Great question. Given the home's age, we may need a 4-point inspection (roof, electrical, plumbing, HVAC) to finalize the rate. I'll prepare a preliminary quote based on the listing details. Also, this property is not in a flood zone, so flood insurance won't be required by the lender — but I'd recommend it given Florida's weather.",
   });
+
+  // ── Seed Transaction Documents (auto-generated on offer acceptance) ──
+  const fullAddr = "725 15th Ave NE, St. Petersburg, FL 33704";
+  try {
+    const paUrl = generatePurchaseAgreement({ buyerName: buyerName, sellerName: sellerName, propertyAddress: fullAddr, purchasePrice: salePrice, closingDate: closingDateDemo, contingencies: ["Inspection", "Financing", "Appraisal"] });
+    const sdUrl = generateSellerDisclosure({ sellerName, propertyAddress: fullAddr, yearBuilt: 1925 });
+    const cdUrl = generateClosingDisclosure({ buyerName: buyerName, sellerName: sellerName, propertyAddress: fullAddr, purchasePrice: salePrice, platformFee: Math.round(salePrice * 0.01), closingDate: closingDateDemo });
+    const radonUrl = generateRadonDisclosure({ sellerName, buyerName: buyerName, propertyAddress: fullAddr });
+    const floodUrl = generateFloodZoneDisclosure({ sellerName, buyerName: buyerName, propertyAddress: fullAddr });
+    const leadUrl = generateLeadPaintDisclosure({ buyerName: buyerName, sellerName, propertyAddress: fullAddr, yearBuilt: 1925 });
+    const walkUrl = generateFinalWalkthroughChecklist({ buyerName: buyerName, propertyAddress: fullAddr, scheduledDate: closingDateDemo });
+    const csUrl = generateClosingStatement({ buyerName: buyerName, sellerName, propertyAddress: fullAddr, purchasePrice: salePrice, loanAmount: salePrice * 0.8, closingDate: closingDateDemo });
+    const deedUrl = generateDeed({ grantorName: sellerName, granteeName: buyerName, propertyAddress: fullAddr, county: "Pinellas", purchasePrice: salePrice });
+    const insUrl = generateInsuranceBinder({ buyerName: buyerName, propertyAddress: fullAddr, purchasePrice: salePrice, effectiveDate: closingDateDemo });
+
+    const demoDocTypes = [
+      { type: "contract", name: "Purchase Agreement", status: "draft", content: paUrl, signedByBuyer: true, signedBySeller: true },
+      { type: "disclosure", name: "Seller's Property Disclosure", status: "draft", content: sdUrl, signedByBuyer: false, signedBySeller: true },
+      { type: "disclosure", name: "Radon Disclosure Notice", status: "draft", content: radonUrl, signedByBuyer: true, signedBySeller: true },
+      { type: "disclosure", name: "Flood Zone Disclosure", status: "draft", content: floodUrl, signedByBuyer: true, signedBySeller: true },
+      { type: "disclosure", name: "Lead-Based Paint Disclosure", status: "draft", content: leadUrl, signedByBuyer: false, signedBySeller: false },
+      { type: "title", name: "Title Search Report", status: "pending_review", content: null },
+      { type: "inspection", name: "Home Inspection Report", status: "uploaded", content: null },
+      { type: "closing", name: "Closing Disclosure (CD)", status: "draft", content: cdUrl, signedByBuyer: false, signedBySeller: false },
+      { type: "closing", name: "Closing Statement", status: "draft", content: csUrl },
+      { type: "closing", name: "Warranty Deed", status: "draft", content: deedUrl },
+      { type: "closing", name: "Final Walkthrough Checklist", status: "draft", content: walkUrl },
+      { type: "closing", name: "Insurance Binder Request", status: "draft", content: insUrl },
+    ];
+    demoDocTypes.forEach(d => {
+      storage.createDocument({ listingId: 3, offerId: 1, type: d.type, name: d.name, status: d.status, content: d.content, signedByBuyer: (d as any).signedByBuyer || false, signedBySeller: (d as any).signedBySeller || false });
+    });
+    console.log("[Seed] Generated 12 transaction documents");
+  } catch (err) {
+    console.error("[Seed] Document generation error:", err);
+  }
+
+  // ── Seed Questionnaire Responses (pre-filled buyer/seller data) ──
+  if (storage.createQuestionnaireResponse) {
+    // Buyer questionnaire responses
+    storage.createQuestionnaireResponse({
+      transactionId: txn.id,
+      userId: buyer1.id,
+      role: "buyer",
+      responses: JSON.stringify({
+        buyerAddress: "4521 Gulf Blvd, St. Pete Beach, FL 33706",
+        personalPropertyIncluded: "Refrigerator, washer, dryer, and patio furniture",
+        occupancyDate: closingDateDemo,
+        vestingType: "Sole ownership",
+        lenderName: "First Federal Mortgage",
+        loanAmount: salePrice * 0.8,
+        interestRate: 6.875,
+        termYears: 30,
+        monthlyPayment: 2942,
+        firstPaymentDate: (() => { const d = new Date(closingDateDemo); d.setDate(1); d.setMonth(d.getMonth() + 2); return d.toISOString().split("T")[0]; })(),
+        buyerWaivesInspection: false,
+      }),
+      completedSections: JSON.stringify(["parties", "financial", "timeline", "buyer_options"]),
+    });
+
+    // Seller questionnaire responses
+    storage.createQuestionnaireResponse({
+      transactionId: txn.id,
+      userId: seller2.id,
+      role: "seller",
+      responses: JSON.stringify({
+        sellerAddress: "1200 Main St, Tampa, FL 33607",
+        legalDescription: "Lot 15, Block 3, OLD NORTHEAST SUBDIVISION, according to map or plat thereof recorded in Plat Book 9, Page 45, Public Records of Pinellas County, Florida",
+        parcelId: "24-31-16-12345-003-0150",
+        roofAge: 8,
+        roofMaterial: "Asphalt Shingle",
+        foundationIssues: true,
+        roofLeaks: false,
+        waterIntrusion: false,
+        previousRepairs: true,
+        repairDetails: "Foundation hairline crack repaired in 2019 by ABC Foundation Repair. Lifetime transferable warranty.",
+        hvacAge: 6,
+        hvacIssues: false,
+        plumbingIssues: false,
+        plumbingType: "Copper",
+        electricalIssues: true,
+        waterHeaterAge: 4,
+        knownAsbestos: false,
+        knownLeadPaint: false,
+        knownMold: false,
+        undergroundTanks: false,
+        sinkholeActivity: false,
+        floodDamage: false,
+        pendingLawsuits: false,
+        hoaViolations: false,
+        easements: false,
+        zoningViolations: false,
+        additionalDisclosures: "Electrical panel has double-tapped breakers noted in previous inspection. Quote obtained for repair: $1,650.",
+        maritalStatus: "Divorced",
+        mortgagePayoff: 185000,
+      }),
+      completedSections: JSON.stringify(["parties", "property", "structural", "mechanical", "environmental", "legal", "financial"]),
+    });
+    console.log("[Seed] Created buyer and seller questionnaire responses");
+  }
 }
 
 // Portal AI response generator (rule-based with OpenAI fallback)
@@ -959,55 +1065,68 @@ export function registerRoutes(server: Server, app: Express) {
         });
         storage.updateListing(offer.listingId, { status: "pending" });
 
-        // Generate PDFs and create document records
+        // ── Smart Document Generation via Orchestrator ──
+        // The agent analyzes this specific transaction and generates ONLY the documents needed.
         const closingDate = offer.closingDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
         const contingencies = (() => { try { return JSON.parse(offer.contingencies || "[]"); } catch { return []; } })();
+        const fullAddress = `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`;
+        const buyerFullName = buyer?.fullName || "Buyer";
+        const sellerFullName = seller?.fullName || "Seller";
+        const isCash = offer.financingType === "cash";
+        const loanAmount = isCash ? 0 : offer.amount * (1 - ((offer.downPaymentPercent || 20) / 100));
 
-        let purchaseAgreementUrl: string | undefined;
-        let disclosureUrl: string | undefined;
-        let closingDisclosureUrl: string | undefined;
-        try {
-          purchaseAgreementUrl = generatePurchaseAgreement({
-            buyerName: buyer?.fullName || "Buyer",
-            sellerName: seller?.fullName || "Seller",
-            propertyAddress: `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`,
-            purchasePrice: offer.amount,
-            closingDate,
-            contingencies,
-          });
-          disclosureUrl = generateSellerDisclosure({
-            sellerName: seller?.fullName || "Seller",
-            propertyAddress: `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`,
-            yearBuilt: listing.yearBuilt || undefined,
-          });
-          closingDisclosureUrl = generateClosingDisclosure({
-            buyerName: buyer?.fullName || "Buyer",
-            sellerName: seller?.fullName || "Seller",
-            propertyAddress: `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`,
-            purchasePrice: offer.amount,
-            platformFee: offer.amount * 0.01,
-            closingDate,
-          });
-        } catch (err) {
-          console.error("PDF generation error:", err);
+        // Map of document generators by name
+        const generators: Record<string, () => string | undefined> = {
+          "Purchase Agreement": () => generatePurchaseAgreement({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, closingDate, contingencies }),
+          "Seller's Property Disclosure": () => generateSellerDisclosure({ sellerName: sellerFullName, propertyAddress: fullAddress, yearBuilt: listing.yearBuilt || undefined }),
+          "Radon Disclosure Notice": () => generateRadonDisclosure({ sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress }),
+          "Flood Zone Disclosure": () => generateFloodZoneDisclosure({ sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress }),
+          "Lead-Based Paint Disclosure": () => generateLeadPaintDisclosure({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, yearBuilt: listing.yearBuilt || 1970 }),
+          "HOA/Condo Disclosure": () => generateHOADisclosure({ sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress, monthlyFee: listing.hoaFee || 0 }),
+          "Closing Disclosure (CD)": () => generateClosingDisclosure({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, platformFee: offer.amount * 0.01, closingDate }),
+          "Closing Statement": () => generateClosingStatement({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, loanAmount, closingDate }),
+          "Final Walkthrough Checklist": () => generateFinalWalkthroughChecklist({ buyerName: buyerFullName, propertyAddress: fullAddress, scheduledDate: closingDate }),
+          "Warranty Deed": () => generateDeed({ grantorName: sellerFullName, granteeName: buyerFullName, propertyAddress: fullAddress, county: listing.city, purchasePrice: offer.amount }),
+          "Insurance Binder Request": () => generateInsuranceBinder({ buyerName: buyerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, effectiveDate: closingDate }),
+          "Promissory Note": () => generatePromissoryNote({ borrowerName: buyerFullName, lenderName: "Lender TBD", propertyAddress: fullAddress, loanAmount, interestRate: 7.0, termYears: 30, monthlyPayment: Math.round(loanAmount * 0.006653), firstPaymentDate: closingDate }),
+        };
+
+        // Use the orchestrator to determine which documents this transaction needs
+        const analysis = analyzeTransactionDocuments(transaction.id);
+        const allNeededDocs = [...analysis.requiredNow, ...analysis.requiredLater];
+
+        console.log(`[Documents] Transaction ${transaction.id}: ${allNeededDocs.length} docs needed, ${analysis.notNeeded.length} excluded`);
+        if (analysis.notNeeded.length > 0) {
+          console.log(`[Documents] Excluded: ${analysis.notNeeded.map(d => `${d.name} (${d.reason})`).join(", ")}`);
         }
 
-        // Create initial closing documents
-        const docTypes = [
-          { type: "contract", name: "Purchase Agreement", url: purchaseAgreementUrl },
-          { type: "disclosure", name: "Seller's Property Disclosure", url: disclosureUrl },
-          { type: "title", name: "Title Search Report", url: undefined },
-          { type: "inspection", name: "Home Inspection Report", url: undefined },
-          { type: "closing", name: "Closing Disclosure (CD)", url: closingDisclosureUrl },
-        ];
-        docTypes.forEach(d => {
+        // Generate only the documents that the orchestrator says are needed
+        const generatedDocTypes: Array<{ type: string; name: string; url?: string }> = [];
+        for (const doc of allNeededDocs) {
+          const generator = generators[doc.name];
+          let url: string | undefined;
+          if (generator) {
+            try { url = generator(); } catch (err) { console.error(`[Documents] Failed to generate ${doc.name}:`, err); }
+          }
+          // Find the registry entry for the document type
+          const regEntry = DOCUMENT_REGISTRY.find(r => r.name === doc.name);
+          generatedDocTypes.push({ type: regEntry?.documentType || "closing", name: doc.name, url });
+        }
+
+        // Also add placeholder entries for third-party docs that will be uploaded
+        if (!isCash) {
+          generatedDocTypes.push({ type: "title", name: "Title Search Report", url: undefined });
+          generatedDocTypes.push({ type: "inspection", name: "Home Inspection Report", url: undefined });
+        }
+
+        // Create document records
+        generatedDocTypes.forEach(d => {
           storage.createDocument({
             listingId: offer.listingId, offerId: offer.id,
-            type: d.type, name: d.name, status: "draft",
+            type: d.type, name: d.name, status: d.url ? "draft" : "pending_review",
             content: d.url || null,
           });
-          // Notify buyer about document
-          sendDocumentReadyEmail(buyer?.email || "", buyer?.fullName || "Buyer", d.name, `${listing.address}, ${listing.city}, ${listing.state}`).catch(() => {});
+          sendDocumentReadyEmail(buyer?.email || "", buyerFullName, d.name, `${listing.address}, ${listing.city}, ${listing.state}`).catch(() => {});
           storage.createNotification({
             userId: offer.buyerId,
             type: "document_ready",
@@ -2096,6 +2215,350 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(repairReq);
   });
 
+  // ========== DOCUMENT GENERATION ON DEMAND ==========
+
+  // Generate Repair Addendum PDF
+  app.post("/api/transactions/:id/repair-addendum", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const repairReq = storage.getRepairRequestByTransaction(txnId);
+      if (!repairReq) return res.status(404).json({ message: "No repair request found" });
+
+      const listing = storage.getListing(txn.listingId);
+      const buyer = storage.getUser(txn.buyerId);
+      const seller = storage.getUser(txn.sellerId);
+
+      const items = (() => { try { return JSON.parse(repairReq.buyerItems || "[]"); } catch { return []; } })();
+      const totalCredits = items.reduce((sum: number, item: any) => sum + (item.estimatedCost || 0), 0);
+
+      const url = generateRepairAddendum({
+        buyerName: buyer?.fullName || "Buyer",
+        sellerName: seller?.fullName || "Seller",
+        propertyAddress: listing ? `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}` : "Property",
+        purchasePrice: txn.salePrice,
+        items,
+        totalCreditsRequested: totalCredits,
+      });
+
+      // Create document record
+      storage.createDocument({
+        listingId: txn.listingId, offerId: txn.offerId,
+        type: "inspection", name: "Repair Addendum", status: "draft", content: url,
+      });
+
+      res.json({ url, message: "Repair Addendum generated" });
+    } catch (error: any) {
+      console.error("Repair addendum error:", error);
+      res.status(500).json({ message: "Failed to generate repair addendum" });
+    }
+  });
+
+  // Generate Promissory Note
+  app.post("/api/transactions/:id/promissory-note", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const buyer = storage.getUser(txn.buyerId);
+      const { lenderName, interestRate, termYears, monthlyPayment } = req.body;
+      const offer = storage.getOffer(txn.offerId);
+      const downPct = (offer?.downPaymentPercent || 20) / 100;
+      const loanAmount = txn.salePrice * (1 - downPct);
+
+      const url = generatePromissoryNote({
+        borrowerName: buyer?.fullName || "Borrower",
+        lenderName: lenderName || "Lender",
+        propertyAddress: "Property",
+        loanAmount,
+        interestRate: interestRate || 7.0,
+        termYears: termYears || 30,
+        monthlyPayment: monthlyPayment || Math.round(loanAmount * 0.006653),
+        firstPaymentDate: txn.closingDate || new Date().toISOString().split("T")[0],
+      });
+
+      storage.createDocument({
+        listingId: txn.listingId, offerId: txn.offerId,
+        type: "closing", name: "Promissory Note", status: "draft", content: url,
+      });
+
+      res.json({ url, message: "Promissory Note generated" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate promissory note" });
+    }
+  });
+
+  // ========== DOCUSIGN & DOCUMENT ORCHESTRATION ==========
+
+  // Get document plan for a transaction (what needs signing, by whom, at what stage)
+  app.get("/api/transactions/:id/document-plan", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const ctx = buildTransactionContext(txnId);
+      if (!ctx) return res.status(404).json({ message: "Transaction not found" });
+
+      const user = req.user as any;
+      const role = user.id === ctx.transaction.buyerId ? "buyer" : "seller";
+      const stage = getCurrentStage(ctx);
+      const myDocs = getDocumentsForRole(stage, role as "buyer" | "seller", ctx);
+      const fullPlan = getFullDocumentPlan(ctx);
+
+      res.json({
+        currentStage: stage,
+        role,
+        myDocumentsToSign: myDocs.map(d => ({
+          name: d.name, type: d.documentType, priority: d.priority,
+          explanation: d.explanation, description: d.description,
+        })),
+        fullPlan: Object.fromEntries(
+          Object.entries(fullPlan).map(([stage, docs]) => [
+            stage,
+            docs.map(d => ({ name: d.name, signers: d.signers, priority: d.priority })),
+          ])
+        ),
+        docusignEnabled: isDocuSignConfigured(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get document plan" });
+    }
+  });
+
+  // Get signing status for a transaction
+  app.get("/api/transactions/:id/signing-status", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const summary = getDocumentSummary(txnId);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get signing status" });
+    }
+  });
+
+  // Send documents for e-signature
+  app.post("/api/transactions/:id/send-for-signing", requireAuth, async (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const { documentNames } = req.body;
+      if (!documentNames || !Array.isArray(documentNames)) {
+        return res.status(400).json({ message: "documentNames array required" });
+      }
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const returnUrl = `${baseUrl}/#/transaction/${txnId}?signing=complete`;
+
+      const result = await sendDocumentsForSigning(txnId, documentNames, returnUrl);
+
+      res.json({
+        success: true,
+        envelopeId: result.envelopeId,
+        signingUrls: result.signingUrls,
+        usingDocuSign: !result.fallback,
+        message: result.fallback
+          ? "Documents marked for signing in the platform (DocuSign not configured)."
+          : `Documents sent via DocuSign. Signing links generated for ${Object.keys(result.signingUrls).join(", ")}.`,
+      });
+    } catch (error: any) {
+      console.error("Send for signing error:", error);
+      res.status(500).json({ message: error.message || "Failed to send documents for signing" });
+    }
+  });
+
+  // DocuSign envelope status check
+  app.get("/api/docusign/envelope/:envelopeId", requireAuth, async (req, res) => {
+    try {
+      if (!isDocuSignConfigured()) {
+        return res.json({ configured: false, message: "DocuSign not configured" });
+      }
+      const status = await getEnvelopeStatus(req.params.envelopeId);
+      res.json({ configured: true, ...status });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to check envelope status" });
+    }
+  });
+
+  // Get fresh signing URL (if previous expired)
+  app.post("/api/docusign/signing-url", requireAuth, async (req, res) => {
+    try {
+      const { envelopeId, role } = req.body;
+      const user = req.user as any;
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+      const url = await getSigningUrl(
+        envelopeId, user.email, user.fullName, role || user.role,
+        `${baseUrl}/#/dashboard?signing=complete`,
+      );
+      res.json({ url });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate signing URL" });
+    }
+  });
+
+  // DocuSign webhook (status updates)
+  app.post("/api/docusign/webhook", async (req, res) => {
+    try {
+      const event = req.body;
+      console.log(`[DocuSign Webhook] Event: ${event?.event}`, JSON.stringify(event).substring(0, 200));
+
+      if (event?.event === "envelope-completed") {
+        // TODO: Update document status in DB, notify users
+        console.log(`[DocuSign] Envelope ${event.data?.envelopeId} completed`);
+      }
+
+      res.status(200).json({ received: true });
+    } catch (error: any) {
+      console.error("DocuSign webhook error:", error);
+      res.status(200).json({ received: true }); // Always return 200 to DocuSign
+    }
+  });
+
+  // ========== QUESTIONNAIRE (Document Data Collection) ==========
+
+  // Get questionnaire for a transaction — what info is still needed
+  app.get("/api/transactions/:id/questionnaire", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const user = req.user as any;
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const role = user.id === txn.buyerId ? "buyer" : "seller";
+
+      // Get existing responses
+      const existing = storage.getQuestionnaireResponses?.(txnId, user.id);
+      const responses = existing ? JSON.parse(existing.responses || "{}") : {};
+
+      const questionnaire = generateFullQuestionnaire(txnId, role as "buyer" | "seller", responses);
+
+      res.json({
+        role,
+        ...questionnaire,
+        existingResponses: responses,
+        isComplete: questionnaire.totalQuestions === 0,
+      });
+    } catch (error: any) {
+      console.error("Questionnaire error:", error);
+      res.status(500).json({ message: "Failed to get questionnaire" });
+    }
+  });
+
+  // Submit questionnaire responses
+  app.post("/api/transactions/:id/questionnaire", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const user = req.user as any;
+      const { responses, completedSections } = req.body;
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const role = user.id === txn.buyerId ? "buyer" : "seller";
+
+      // Encrypt sensitive fields before storage
+      const encryptedResponses = encryptObject(responses || {});
+
+      // Merge with existing responses
+      const existing = storage.getQuestionnaireResponses?.(txnId, user.id);
+      let mergedResponses = encryptedResponses;
+      if (existing) {
+        const prev = JSON.parse(existing.responses || "{}");
+        mergedResponses = { ...prev, ...encryptedResponses };
+      }
+
+      // Save (create or update)
+      if (existing && storage.updateQuestionnaireResponse) {
+        storage.updateQuestionnaireResponse(existing.id, {
+          responses: JSON.stringify(mergedResponses),
+          completedSections: JSON.stringify(completedSections || []),
+          updatedAt: new Date().toISOString(),
+        });
+      } else if (storage.createQuestionnaireResponse) {
+        storage.createQuestionnaireResponse({
+          transactionId: txnId,
+          userId: user.id,
+          role,
+          responses: JSON.stringify(mergedResponses),
+          completedSections: JSON.stringify(completedSections || []),
+        });
+      }
+
+      // Check what documents are now ready to generate
+      const readyDocs = getConfiguredDocuments().filter(docName =>
+        isDocumentReady(docName, txnId, mergedResponses)
+      );
+
+      res.json({
+        saved: true,
+        totalResponses: Object.keys(mergedResponses).length,
+        readyDocuments: readyDocs,
+        message: readyDocs.length > 0
+          ? `${readyDocs.length} document(s) now have all required information and can be generated.`
+          : "Responses saved. Some documents still need additional information.",
+      });
+    } catch (error: any) {
+      console.error("Questionnaire submit error:", error);
+      res.status(500).json({ message: "Failed to save questionnaire responses" });
+    }
+  });
+
+  // Preview filled document data (what fields are populated, what's missing)
+  app.get("/api/transactions/:id/document-fill/:documentName", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const docName = decodeURIComponent(req.params.documentName);
+      const user = req.user as any;
+
+      const existing = storage.getQuestionnaireResponses?.(txnId, user.id);
+      const responses = existing ? JSON.parse(existing.responses || "{}") : {};
+
+      const result = fillDocument(docName, txnId, responses);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to preview document fill" });
+    }
+  });
+
+  // Get the full document registry (all possible documents)
+  app.get("/api/documents/registry", requireAuth, (_req, res) => {
+    res.json({
+      documents: DOCUMENT_REGISTRY.map(d => ({
+        name: d.name, type: d.documentType, stage: d.stage,
+        signers: d.signers, priority: d.priority,
+        description: d.description, explanation: d.explanation,
+        conditional: !!d.condition,
+      })),
+      total: DOCUMENT_REGISTRY.length,
+    });
+  });
+
+  // List all available document generators
+  app.get("/api/documents/generators", requireAuth, (_req, res) => {
+    res.json({
+      autoGenerated: [
+        "Purchase Agreement", "Seller's Property Disclosure", "Closing Disclosure",
+        "Radon Disclosure Notice", "Flood Zone Disclosure", "Closing Statement",
+        "Warranty Deed", "Final Walkthrough Checklist", "Insurance Binder Request",
+      ],
+      conditional: [
+        { name: "Lead-Based Paint Disclosure", condition: "Pre-1978 homes only" },
+        { name: "HOA/Condo Disclosure", condition: "Properties with HOA fees" },
+      ],
+      onDemand: [
+        { name: "Repair Addendum", endpoint: "POST /api/transactions/:id/repair-addendum" },
+        { name: "Promissory Note", endpoint: "POST /api/transactions/:id/promissory-note" },
+      ],
+      thirdParty: [
+        "Title Search Report (uploaded by title company)",
+        "Home Inspection Report (uploaded by inspector)",
+        "Appraisal Report (uploaded by appraiser)",
+        "Loan Estimate (uploaded by lender)",
+        "4-Point Inspection (uploaded by inspector)",
+        "Wind Mitigation Report (uploaded by inspector)",
+      ],
+    });
+  });
+
   // ========== PROFESSIONAL PORTAL ==========
 
   // Invite a professional to a transaction
@@ -2336,7 +2799,7 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(docs);
   });
 
-  // ========== AI AGENT (full agent loop with tool use) ==========
+  // ========== AI AGENTS (role-specific: buyer's agent or seller's agent) ==========
   app.post("/api/agent/chat", requireAuth, async (req, res) => {
     try {
       const { message, history, context } = req.body;
@@ -2353,7 +2816,19 @@ export function registerRoutes(server: Server, app: Express) {
         offerId: context?.offerId,
       };
 
-      const result = await runAgent(message, history || [], agentContext);
+      // Route to the correct agent based on user role
+      let result;
+      if (user.role === "seller") {
+        console.log(`[Agent] Routing ${user.fullName} to SELLER'S AGENT`);
+        result = await runSellerAgent(message, history || [], agentContext);
+      } else if (user.role === "buyer" || !user.role) {
+        console.log(`[Agent] Routing ${user.fullName} to BUYER'S AGENT`);
+        result = await runBuyerAgent(message, history || [], agentContext);
+      } else {
+        // Admin, chaperone, or unknown role — use the general agent
+        console.log(`[Agent] Routing ${user.fullName} (${user.role}) to GENERAL AGENT`);
+        result = await runAgent(message, history || [], agentContext);
+      }
 
       res.json({
         response: result.message,
@@ -2361,6 +2836,7 @@ export function registerRoutes(server: Server, app: Express) {
         pendingActions: result.pendingActions,
         confidence: result.confidence,
         escalate: result.escalate,
+        agentType: user.role === "seller" ? "seller_agent" : user.role === "buyer" ? "buyer_agent" : "general_agent",
       });
     } catch (error: any) {
       console.error("Agent chat error:", error);

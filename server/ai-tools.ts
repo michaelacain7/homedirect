@@ -275,11 +275,99 @@ export const toolDefinitions: ToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_transaction_documents",
+      description: "Get all documents for a transaction, organized by signing status and stage. Use when buyer/seller asks about documents, what needs to be signed, or document status.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+        },
+        required: ["transactionId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "explain_document",
+      description: "Get a detailed plain-English explanation of a specific real estate document — what it is, why it matters, what to look for. Use when buyer/seller asks questions about a document.",
+      parameters: {
+        type: "object",
+        properties: {
+          documentName: { type: "string", description: "Name of the document to explain" },
+          userRole: { type: "string", enum: ["buyer", "seller"], description: "Whether the user is buyer or seller" },
+        },
+        required: ["documentName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyze_transaction_documents",
+      description: "Analyze a transaction and determine exactly which documents are needed based on the specific deal (cash vs financed, pre-1978, HOA, contingencies, coastal, etc.). Returns what's needed now, what's needed later, and what's NOT needed with reasons. Use this to give the buyer/seller a clear picture of their paperwork.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID to analyze" },
+        },
+        required: ["transactionId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_document_readiness",
+      description: "Check if a document has all required data to be filled out and sent for signing. Shows what's complete and what info is still needed from the buyer or seller. Use when managing the transaction paperwork.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+          documentName: { type: "string", description: "Name of the document to check" },
+        },
+        required: ["transactionId", "documentName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_missing_information",
+      description: "Get the list of questions that still need to be answered by the buyer or seller before documents can be completed. Use when you need to collect information from the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+          role: { type: "string", enum: ["buyer", "seller"], description: "Which party to get questions for" },
+        },
+        required: ["transactionId", "role"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_documents_for_signing",
+      description: "Send specific documents to buyer and/or seller for e-signature via DocuSign. REQUIRES USER CONFIRMATION.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+          documentNames: { type: "array", items: { type: "string" }, description: "Names of documents to send for signing" },
+        },
+        required: ["transactionId", "documentNames"],
+      },
+    },
+  },
 ];
 
 // ── Tools that require user confirmation before executing ─────────────────────
 
-const ACTION_TOOLS = new Set(["schedule_walkthrough", "draft_offer"]);
+const ACTION_TOOLS = new Set(["schedule_walkthrough", "draft_offer", "send_documents_for_signing"]);
 
 export function requiresConfirmation(toolName: string): boolean {
   return ACTION_TOOLS.has(toolName);
@@ -555,6 +643,76 @@ export async function executeTool(
         suggestedCounter: suggested,
         closingCostCredit: credit,
         script: `Counter-offer at $${suggested.toLocaleString()}${credit > 0 ? ` with $${credit.toLocaleString()} closing cost credit` : ""}.`,
+      });
+    }
+
+    case "analyze_transaction_documents": {
+      const { analyzeTransactionDocuments } = await import("./document-orchestrator");
+      const analysis = analyzeTransactionDocuments(args.transactionId);
+      return JSON.stringify(analysis);
+    }
+
+    case "check_document_readiness": {
+      const { fillDocument } = await import("./document-filler");
+      const result = fillDocument(args.documentName, args.transactionId);
+      return JSON.stringify({
+        documentName: result.documentName,
+        completionPercent: result.completionPercent,
+        filledFields: Object.keys(result.fields).length,
+        missingFields: result.missingFields.map(f => ({ key: f.key, label: f.label, helpText: f.helpText })),
+        isReady: result.missingFields.length === 0,
+        message: result.missingFields.length === 0
+          ? `${result.documentName} is ready to be generated and sent for signing.`
+          : `${result.documentName} needs ${result.missingFields.length} more piece(s) of information: ${result.missingFields.map(f => f.label).join(", ")}.`,
+      });
+    }
+
+    case "get_missing_information": {
+      const { generateFullQuestionnaire } = await import("./document-filler");
+      const questionnaire = generateFullQuestionnaire(args.transactionId, args.role);
+      return JSON.stringify({
+        role: args.role,
+        totalQuestions: questionnaire.totalQuestions,
+        categories: Object.fromEntries(
+          Object.entries(questionnaire.categories).map(([cat, questions]) => [
+            cat, questions.map(q => ({ key: q.key, label: q.label, type: q.type, options: q.options, helpText: q.helpText }))
+          ])
+        ),
+        message: questionnaire.totalQuestions === 0
+          ? `All information has been collected from the ${args.role}. Documents are ready.`
+          : `The ${args.role} still needs to provide ${questionnaire.totalQuestions} piece(s) of information across ${Object.keys(questionnaire.categories).length} categories.`,
+      });
+    }
+
+    case "get_transaction_documents": {
+      const { getDocumentSummary } = await import("./document-orchestrator");
+      const summary = getDocumentSummary(args.transactionId);
+      return JSON.stringify(summary);
+    }
+
+    case "explain_document": {
+      const { DOCUMENT_REGISTRY } = await import("./document-orchestrator");
+      const docReq = DOCUMENT_REGISTRY.find(d => d.name.toLowerCase().includes((args.documentName || "").toLowerCase()));
+      if (!docReq) return JSON.stringify({ error: "Document not found in registry", available: DOCUMENT_REGISTRY.map(d => d.name) });
+      return JSON.stringify({
+        name: docReq.name,
+        type: docReq.documentType,
+        stage: docReq.stage,
+        signers: docReq.signers,
+        priority: docReq.priority,
+        explanation: docReq.explanation,
+        description: docReq.description,
+      });
+    }
+
+    case "send_documents_for_signing": {
+      const { sendDocumentsForSigning } = await import("./document-orchestrator");
+      return JSON.stringify({
+        requiresConfirmation: true,
+        action: "send_documents_for_signing",
+        transactionId: args.transactionId,
+        documentNames: args.documentNames,
+        message: `Ready to send ${(args.documentNames || []).length} document(s) for e-signature: ${(args.documentNames || []).join(", ")}. Please confirm.`,
       });
     }
 

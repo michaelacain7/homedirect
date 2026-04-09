@@ -364,3 +364,708 @@ export function generateClosingDisclosure(data: {
   doc.end();
   return `/uploads/documents/${filename}`;
 }
+
+// ─── Lead-Based Paint Disclosure (Federal — pre-1978 homes) ─────────────────
+export function generateLeadPaintDisclosure(data: {
+  buyerName: string; sellerName: string; propertyAddress: string; yearBuilt: number;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `lead-paint-disclosure-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("LEAD-BASED PAINT DISCLOSURE", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(9).font("Helvetica").text("Disclosure of Information on Lead-Based Paint and/or Lead-Based Paint Hazards", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(9).text(`Required by Federal Law (42 U.S.C. 4852d) for homes built before 1978`, { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(0.8);
+
+  doc.fontSize(10).font("Helvetica");
+  doc.text(`Property: ${data.propertyAddress}`);
+  doc.text(`Year Built: ${data.yearBuilt}`);
+  doc.text(`Seller: ${data.sellerName}    Buyer: ${data.buyerName}`);
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("LEAD WARNING STATEMENT");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica").text(
+    "Every purchaser of any interest in residential real property on which a residential dwelling was built prior to 1978 is notified that such property may present exposure to lead from lead-based paint that may place young children at risk of developing lead poisoning. Lead poisoning in young children may produce permanent neurological damage, including learning disabilities, reduced intelligence quotient, behavioral problems, and impaired memory. Lead poisoning also poses a particular risk to pregnant women. The seller of any interest in residential real property is required to provide the buyer with any information on lead-based paint hazards from risk assessments or inspections in the seller's possession and notify the buyer of any known lead-based paint hazards. A risk assessment or inspection for possible lead-based paint hazards is recommended prior to purchase."
+  );
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("SELLER'S DISCLOSURE");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text("(a) Presence of lead-based paint and/or lead-based paint hazards (check one):");
+  doc.text("    □ Known lead-based paint and/or lead-based paint hazards are present in the housing.");
+  doc.text("    □ Seller has no knowledge of lead-based paint and/or lead-based paint hazards in the housing.");
+  doc.moveDown(0.5);
+  doc.text("(b) Records and reports available to the seller (check one):");
+  doc.text("    □ Seller has provided the purchaser with all available records and reports.");
+  doc.text("    □ Seller has no reports or records pertaining to lead-based paint.");
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("BUYER'S ACKNOWLEDGMENT");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text("(c) □ Buyer has received the pamphlet Protect Your Family From Lead in Your Home.");
+  doc.text("(d) □ Buyer has received a 10-day opportunity (or mutually agreed upon period) to conduct a risk assessment or inspection for the presence of lead-based paint and/or lead-based paint hazards.");
+  doc.text("    □ Buyer has waived the opportunity to conduct a risk assessment or inspection.");
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("CERTIFICATION OF ACCURACY");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica").text("The following parties have reviewed the information above and certify, to the best of their knowledge, that the information provided is true and accurate.");
+  doc.moveDown(1.5);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.sellerName} (Seller)    Date: ____________`);
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text(`${data.buyerName} (Buyer)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Radon Disclosure (Florida Required) ────────────────────────────────────
+export function generateRadonDisclosure(data: {
+  sellerName: string; buyerName: string; propertyAddress: string;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `radon-disclosure-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("RADON GAS DISCLOSURE", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("Required by Florida Statute 404.056(5)", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(1);
+
+  doc.fontSize(10).text(`Property: ${data.propertyAddress}`);
+  doc.text(`Seller: ${data.sellerName}    Buyer: ${data.buyerName}`);
+  doc.moveDown(1.5);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("FLORIDA RADON GAS NOTICE");
+  doc.moveDown(0.5);
+  doc.fontSize(10).font("Helvetica").text(
+    "RADON GAS: Radon is a naturally occurring radioactive gas that, when it has accumulated in a building in sufficient quantities, may present health risks to persons who are exposed to it over time. Levels of radon that exceed federal and state guidelines have been found in buildings in Florida. Additional information regarding radon and radon testing may be obtained from your county health department.",
+    { lineGap: 3 }
+  );
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("SELLER'S DISCLOSURE");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text("Has radon testing been conducted on this property?");
+  doc.text("    □ Yes    □ No    □ Unknown");
+  doc.moveDown(0.4);
+  doc.text("If yes, what were the results? _______________________________________________");
+  doc.moveDown(0.4);
+  doc.text("Has a radon mitigation system been installed?");
+  doc.text("    □ Yes    □ No    □ Unknown");
+  doc.moveDown(0.4);
+  doc.text("Comments: ________________________________________________________________");
+  doc.moveDown(1.5);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("ACKNOWLEDGMENT");
+  doc.moveDown(0.5);
+  doc.fontSize(9).font("Helvetica").text("Both parties acknowledge receipt of this Radon Gas Disclosure as required by Florida law.");
+  doc.moveDown(1.5);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.sellerName} (Seller)    Date: ____________`);
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text(`${data.buyerName} (Buyer)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Flood Zone Disclosure ──────────────────────────────────────────────────
+export function generateFloodZoneDisclosure(data: {
+  sellerName: string; buyerName: string; propertyAddress: string;
+  floodZone?: string; inFloodZone?: boolean; hasFloodInsurance?: boolean;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `flood-zone-disclosure-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("FLOOD ZONE DISCLOSURE", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("Property Flood Hazard Notification", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(1);
+
+  doc.fontSize(10).text(`Property: ${data.propertyAddress}`);
+  doc.text(`Seller: ${data.sellerName}    Buyer: ${data.buyerName}`);
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("FLOOD ZONE DESIGNATION");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text(`FEMA Flood Zone: ${data.floodZone || "□ Zone A   □ Zone AE   □ Zone X   □ Unknown"}`);
+  doc.text(`Property is in a Special Flood Hazard Area (SFHA): ${data.inFloodZone !== undefined ? (data.inFloodZone ? "Yes" : "No") : "□ Yes   □ No   □ Unknown"}`);
+  doc.moveDown(0.5);
+  doc.text("Has the property experienced flood damage?    □ Yes   □ No   □ Unknown");
+  doc.text("If yes, describe: ________________________________________________________________");
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("FLOOD INSURANCE NOTICE");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica").text(
+    "If this property is located in a Special Flood Hazard Area (Zones A, AE, V, VE), federal law requires flood insurance as a condition of obtaining a federally-backed mortgage. Flood insurance is available through the National Flood Insurance Program (NFIP) and private insurers. Even if the property is not in a designated flood zone, flood insurance is recommended — over 25% of flood claims come from outside high-risk areas.",
+    { lineGap: 2 }
+  );
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("SELLER CERTIFICATION");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica").text("Seller certifies that the flood zone information provided above is accurate to the best of their knowledge.");
+  doc.moveDown(1.5);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.sellerName} (Seller)    Date: ____________`);
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text(`${data.buyerName} (Buyer)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── HOA/Condo Disclosure ───────────────────────────────────────────────────
+export function generateHOADisclosure(data: {
+  sellerName: string; buyerName: string; propertyAddress: string;
+  hoaName?: string; monthlyFee?: number; specialAssessments?: string; restrictions?: string[];
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `hoa-disclosure-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("HOA / CONDOMINIUM DISCLOSURE", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("Florida Statute Chapter 720 (HOA) / Chapter 718 (Condo)", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(1);
+
+  doc.fontSize(10).text(`Property: ${data.propertyAddress}`);
+  doc.text(`Association: ${data.hoaName || "________________________________"}`);
+  doc.text(`Monthly/Quarterly Dues: ${data.monthlyFee ? formatCurrency(data.monthlyFee) + "/month" : "$ ____________"}`);
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("ASSOCIATION INFORMATION");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text("Special Assessments (pending or levied within past 12 months):");
+  doc.text(`    ${data.specialAssessments || "□ None   □ Yes — Amount: $ ____________  Purpose: ________________________"}`);
+  doc.moveDown(0.4);
+  doc.text("Pending litigation involving the association:    □ Yes   □ No   □ Unknown");
+  doc.text("Association reserves funded at required levels:    □ Yes   □ No   □ Unknown");
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("DOCUMENTS TO BE PROVIDED");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  const docList = ["Declaration of Covenants, Conditions, and Restrictions", "Bylaws", "Rules and Regulations", "Most recent year-end financial statements", "Current year's budget", "Meeting minutes (past 12 months)", "Certificate of Insurance (master policy)"];
+  docList.forEach(d => doc.text(`    □ ${d}`));
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("BUYER'S RESCISSION RIGHT");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica").text(
+    "Buyer has 3 BUSINESS DAYS after receipt of the complete association documents to cancel this contract and receive a full refund of the earnest money deposit. This right is provided by Florida law and cannot be waived.",
+    { lineGap: 2 }
+  );
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("ESTOPPEL LETTER");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica").text("An estoppel letter from the association is required at closing confirming current fees, amounts owed, and any pending assessments. Cost: typically $200-400. Ordered by the title company.");
+  doc.moveDown(1.5);
+
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.sellerName} (Seller)    Date: ____________`);
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text(`${data.buyerName} (Buyer)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Repair Addendum ────────────────────────────────────────────────────────
+export function generateRepairAddendum(data: {
+  buyerName: string; sellerName: string; propertyAddress: string; purchasePrice: number;
+  items: Array<{ finding: string; type?: string; estimatedCost: number; request?: string }>;
+  totalCreditsRequested: number;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `repair-addendum-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("REPAIR/CREDIT ADDENDUM", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("Addendum to Residential Purchase Agreement", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(0.8);
+
+  doc.fontSize(10);
+  doc.text(`Property: ${data.propertyAddress}`);
+  doc.text(`Buyer: ${data.buyerName}    Seller: ${data.sellerName}`);
+  doc.text(`Purchase Price: ${formatCurrency(data.purchasePrice)}`);
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("INSPECTION FINDINGS & REQUESTS");
+  doc.moveDown(0.5);
+
+  data.items.forEach((item, i) => {
+    doc.fontSize(10).font("Helvetica-Bold").text(`${i + 1}. ${item.finding}`);
+    doc.fontSize(9).font("Helvetica");
+    if (item.type) doc.text(`   Category: ${item.type}`);
+    doc.text(`   Estimated Cost: ${formatCurrency(item.estimatedCost)}`);
+    doc.text(`   Buyer's Request: ${item.request || "Seller credit"}`);
+    doc.text(`   Seller Response: □ Accept  □ Counter ($________)  □ Reject`);
+    doc.moveDown(0.5);
+  });
+
+  doc.moveDown(0.5);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(0.5);
+  doc.fontSize(11).font("Helvetica-Bold");
+  doc.text(`Total Credits Requested: ${formatCurrency(data.totalCreditsRequested)}`);
+  doc.text("Seller's Total Agreed Credits: $ ________________");
+  doc.moveDown(1);
+
+  doc.fontSize(10).font("Helvetica").text("Seller must respond within 5 business days of receipt. If no response is received, Buyer may terminate the contract and receive earnest money back per the inspection contingency.");
+  doc.moveDown(1.5);
+
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.buyerName} (Buyer)    Date: ____________`);
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(280, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text(`${data.sellerName} (Seller)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Final Walkthrough Checklist ────────────────────────────────────────────
+export function generateFinalWalkthroughChecklist(data: {
+  buyerName: string; propertyAddress: string; scheduledDate: string;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `final-walkthrough-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("FINAL WALKTHROUGH CHECKLIST", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("Pre-Closing Property Inspection", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(0.8);
+
+  doc.fontSize(10);
+  doc.text(`Property: ${data.propertyAddress}`);
+  doc.text(`Buyer: ${data.buyerName}`);
+  doc.text(`Date: ${data.scheduledDate}`);
+  doc.moveDown(1);
+
+  const sections: { title: string; items: string[] }[] = [
+    { title: "AGREED REPAIRS", items: ["All agreed repairs have been completed", "Repair receipts/documentation provided", "Quality of repairs is acceptable"] },
+    { title: "FIXTURES & APPLIANCES", items: ["All appliances present and operational", "Light fixtures working", "Ceiling fans operational", "Garage door opener(s) present and working", "All window treatments included per contract are present"] },
+    { title: "PROPERTY CONDITION", items: ["No new damage since home inspection", "Walls, ceilings, floors in expected condition", "No signs of water damage or leaks", "Exterior in acceptable condition", "Lawn/landscaping maintained"] },
+    { title: "SYSTEMS", items: ["HVAC running properly (both heat and cool)", "Hot water working", "Water pressure adequate at all faucets", "All toilets flush properly", "Electrical outlets working (test several)"] },
+    { title: "DOORS, WINDOWS & LOCKS", items: ["All doors open and close properly", "All windows open, close, and lock", "All exterior doors lock properly", "Sliding doors on track and lock"] },
+    { title: "SELLER MOVE-OUT", items: ["All personal property of seller removed", "No debris or trash left behind", "Garage and storage areas cleared", "All keys, codes, and remotes provided"] },
+    { title: "UTILITIES", items: ["Electric service on", "Water service on", "Gas service on (if applicable)", "Internet/cable connections accessible"] },
+    { title: "POOL/SPA (if applicable)", items: ["Pool equipment running", "Pool clean and maintained", "Safety barrier/fence intact"] },
+  ];
+
+  sections.forEach(section => {
+    doc.fontSize(11).font("Helvetica-Bold").text(section.title);
+    doc.moveDown(0.3);
+    section.items.forEach(item => {
+      doc.fontSize(9).font("Helvetica").text(`□ Pass  □ Fail  □ N/A    ${item}`);
+      doc.moveDown(0.2);
+    });
+    doc.moveDown(0.4);
+  });
+
+  doc.addPage();
+  doc.fontSize(11).font("Helvetica-Bold").text("NOTES / ISSUES FOUND");
+  doc.moveDown(0.5);
+  doc.fontSize(10).font("Helvetica");
+  for (let i = 0; i < 8; i++) { doc.text("_____________________________________________________________________________"); doc.moveDown(0.5); }
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("BUYER'S CERTIFICATION");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica").text("I have conducted the final walkthrough and the property is: □ Acceptable for closing  □ NOT acceptable (see notes above)");
+  doc.moveDown(1.5);
+  doc.moveTo(72, doc.y).lineTo(300, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text(`${data.buyerName} (Buyer)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Closing Statement (HUD-1 Style) ────────────────────────────────────────
+export function generateClosingStatement(data: {
+  buyerName: string; sellerName: string; propertyAddress: string;
+  purchasePrice: number; loanAmount: number; closingDate: string;
+  buyerCredits?: number; sellerCredits?: number;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `closing-statement-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 60, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("CLOSING STATEMENT", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(9).font("Helvetica").text("Settlement Statement — Florida Real Estate Transaction", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).stroke();
+  doc.moveDown(0.6);
+
+  doc.fontSize(10);
+  doc.text(`Property: ${data.propertyAddress}`);
+  doc.text(`Closing Date: ${data.closingDate}`);
+  doc.text(`Buyer: ${data.buyerName}    Seller: ${data.sellerName}`);
+  doc.moveDown(1);
+
+  const price = data.purchasePrice;
+  const loan = data.loanAmount;
+  const downPayment = price - loan;
+  const earnest = Math.round(price * 0.01);
+  // Florida calculations
+  const docStampsDeed = Math.round(price * 0.007);
+  const docStampsMortgage = Math.round(loan * 0.0035);
+  const intangibleTax = Math.round(loan * 0.002);
+  const titleFirst100k = Math.min(price, 100000) * 5.75 / 1000;
+  const titleRest = Math.max(0, Math.min(price, 1000000) - 100000) * 5.0 / 1000;
+  const titleInsurance = Math.round(titleFirst100k + titleRest);
+  const lenderFees = Math.round(loan * 0.01);
+  const recording = 200;
+  const survey = 400;
+  const prepaid = Math.round(price * 0.008);
+  const platformFee = Math.round(price * 0.01);
+
+  const buyerTotal = docStampsMortgage + intangibleTax + titleInsurance + lenderFees + recording + survey + prepaid - earnest;
+  const sellerTotal = docStampsDeed + titleInsurance + platformFee;
+  const sellerNet = price - sellerTotal;
+
+  // BUYER SIDE
+  doc.fontSize(12).font("Helvetica-Bold").text("BUYER'S SETTLEMENT");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica");
+  const bLine = (label: string, val: number) => { doc.text(`${label}`, 60, doc.y, { continued: true, width: 340 }); doc.text(formatCurrency(val), { align: "right" }); };
+  bLine("Purchase Price", price);
+  doc.moveDown(0.3);
+  doc.font("Helvetica-Bold").text("Buyer Closing Costs:", 60); doc.font("Helvetica");
+  bLine("  Doc Stamps on Mortgage ($0.35/$100)", docStampsMortgage);
+  bLine("  Intangible Tax ($0.20/$100)", intangibleTax);
+  bLine("  Title Insurance (FL schedule)", titleInsurance);
+  bLine("  Lender Origination Fees (1%)", lenderFees);
+  bLine("  Recording Fees", recording);
+  bLine("  Survey", survey);
+  bLine("  Prepaid Taxes & Insurance", prepaid);
+  doc.moveDown(0.3);
+  doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).dash(2, { space: 2 }).stroke().undash();
+  doc.moveDown(0.3);
+  bLine("Total Buyer Closing Costs", buyerTotal + earnest);
+  doc.moveDown(0.2);
+  bLine("Less: Earnest Money Deposit", -earnest);
+  bLine("Less: Mortgage Loan", -loan);
+  doc.moveDown(0.3);
+  doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).stroke();
+  doc.moveDown(0.3);
+  doc.font("Helvetica-Bold");
+  bLine("TOTAL DUE FROM BUYER AT CLOSING", downPayment + buyerTotal);
+  doc.font("Helvetica");
+  doc.moveDown(1.5);
+
+  // SELLER SIDE
+  doc.fontSize(12).font("Helvetica-Bold").text("SELLER'S SETTLEMENT");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica");
+  bLine("Sale Price", price);
+  doc.moveDown(0.3);
+  doc.font("Helvetica-Bold").text("Seller Closing Costs:", 60); doc.font("Helvetica");
+  bLine("  Doc Stamps on Deed ($0.70/$100)", -docStampsDeed);
+  bLine("  Title Insurance (owner's policy)", -titleInsurance);
+  bLine("  HomeDirectAI Platform Fee (1%)", -platformFee);
+  if (data.sellerCredits) bLine("  Seller Credits to Buyer", -(data.sellerCredits));
+  doc.moveDown(0.3);
+  doc.moveTo(60, doc.y).lineTo(doc.page.width - 60, doc.y).stroke();
+  doc.moveDown(0.3);
+  doc.font("Helvetica-Bold");
+  bLine("NET PROCEEDS TO SELLER", sellerNet - (data.sellerCredits || 0));
+  doc.font("Helvetica");
+  doc.moveDown(1.5);
+
+  doc.fontSize(8).fillColor("#666").text("This is an estimated settlement statement. Final figures may differ based on proration adjustments, lender requirements, and title company calculations. Review your final Closing Disclosure carefully.", { align: "center" });
+  doc.fillColor("#000");
+  doc.moveDown(1.5);
+  doc.moveTo(60, doc.y).lineTo(260, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.buyerName} (Buyer)    Date: ____________`);
+  doc.moveDown(1);
+  doc.moveTo(60, doc.y).lineTo(260, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text(`${data.sellerName} (Seller)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Promissory Note ────────────────────────────────────────────────────────
+export function generatePromissoryNote(data: {
+  borrowerName: string; lenderName: string; propertyAddress: string;
+  loanAmount: number; interestRate: number; termYears: number;
+  monthlyPayment: number; firstPaymentDate: string;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `promissory-note-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("PROMISSORY NOTE", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("Fixed Rate — Residential Mortgage", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(1);
+
+  doc.fontSize(10);
+  doc.text(`Date: ${new Date().toLocaleDateString()}`);
+  doc.text(`Property: ${data.propertyAddress}`);
+  doc.text(`Borrower: ${data.borrowerName}`);
+  doc.text(`Lender: ${data.lenderName}`);
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("1. PROMISE TO PAY");
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text(
+    `For value received, the undersigned ("Borrower") promises to pay to the order of ${data.lenderName} ("Lender") the principal sum of ${formatCurrency(data.loanAmount)}, plus interest, as set forth below.`
+  );
+  doc.moveDown(0.8);
+
+  doc.font("Helvetica-Bold").text("2. INTEREST");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text(`Interest shall accrue on the unpaid principal balance at the fixed rate of ${data.interestRate}% per annum.`);
+  doc.moveDown(0.8);
+
+  doc.font("Helvetica-Bold").text("3. MONTHLY PAYMENTS");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text(`Borrower shall make monthly payments of ${formatCurrency(data.monthlyPayment)} (principal and interest) beginning ${data.firstPaymentDate}, and on the same day of each month thereafter for a term of ${data.termYears} years (${data.termYears * 12} payments).`);
+  doc.moveDown(0.8);
+
+  doc.font("Helvetica-Bold").text("4. LATE CHARGE");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text("If any monthly payment is not received by the Lender within 15 days after the due date, a late charge of 5% of the overdue amount shall be assessed.");
+  doc.moveDown(0.8);
+
+  doc.font("Helvetica-Bold").text("5. PREPAYMENT");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text("Borrower may prepay this Note in whole or in part at any time without penalty.");
+  doc.moveDown(0.8);
+
+  doc.font("Helvetica-Bold").text("6. DEFAULT");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text("If Borrower fails to make any payment within 30 days of the due date, the entire unpaid balance shall, at the option of the Lender, become immediately due and payable (acceleration).");
+  doc.moveDown(0.8);
+
+  doc.font("Helvetica-Bold").text("7. GOVERNING LAW");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text("This Note shall be governed by the laws of the State of Florida.");
+  doc.moveDown(1.5);
+
+  doc.moveTo(72, doc.y).lineTo(300, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.borrowerName} (Borrower)    Date: ____________`);
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Warranty Deed ──────────────────────────────────────────────────────────
+export function generateDeed(data: {
+  grantorName: string; granteeName: string; propertyAddress: string;
+  legalDescription?: string; county: string; purchasePrice: number;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `warranty-deed-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("GENERAL WARRANTY DEED", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("State of Florida", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(1);
+
+  const docStamps = Math.round(data.purchasePrice * 0.007);
+  doc.fontSize(10);
+  doc.text(`Prepared by: HomeDirectAI Platform`);
+  doc.text(`Recording requested by: Title Company`);
+  doc.text(`Documentary Stamps: ${formatCurrency(docStamps)} ($0.70 per $100 of ${formatCurrency(data.purchasePrice)})`);
+  doc.moveDown(1);
+
+  doc.fontSize(10).font("Helvetica").text(
+    `This WARRANTY DEED made this _______ day of ______________, 20____, by ${data.grantorName} ("Grantor"), whose post office address is ________________________________, to ${data.granteeName} ("Grantee"), whose post office address is ________________________________.`,
+    { lineGap: 3 }
+  );
+  doc.moveDown(1);
+
+  doc.font("Helvetica-Bold").text("WITNESSETH:");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text(
+    `That the Grantor, for and in consideration of the sum of ${formatCurrency(data.purchasePrice)} and other good and valuable consideration, receipt whereof is hereby acknowledged, does hereby grant, bargain, sell, alien, remise, release, convey, and confirm unto the Grantee all that certain land situate in ${data.county} County, Florida, described as follows:`,
+    { lineGap: 3 }
+  );
+  doc.moveDown(0.8);
+
+  doc.font("Helvetica-Bold").text("LEGAL DESCRIPTION:");
+  doc.moveDown(0.3);
+  doc.font("Helvetica").text(data.legalDescription || `Property commonly known as: ${data.propertyAddress}\n[Full legal description to be inserted from title commitment]`);
+  doc.moveDown(1);
+
+  doc.font("Helvetica").text(
+    "TOGETHER with all the tenements, hereditaments, and appurtenances thereto belonging or in anywise appertaining. TO HAVE AND TO HOLD the same in fee simple forever.",
+    { lineGap: 2 }
+  );
+  doc.moveDown(0.5);
+  doc.text(
+    "And the Grantor hereby covenants with said Grantee that the Grantor is lawfully seized of said land in fee simple; that the Grantor has good right and lawful authority to sell and convey said land; that the Grantor hereby fully warrants the title to said land and will defend the same against the lawful claims of all persons whomsoever.",
+    { lineGap: 2 }
+  );
+  doc.moveDown(1.5);
+
+  doc.text("IN WITNESS WHEREOF, the Grantor has signed and sealed these presents.");
+  doc.moveDown(1.5);
+  doc.text("Signed, sealed, and delivered in our presence:");
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(300, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.fontSize(9).text(`${data.grantorName} (Grantor)`);
+  doc.moveDown(1.5);
+
+  doc.fontSize(10).font("Helvetica-Bold").text("NOTARY ACKNOWLEDGMENT");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica").text(
+    `STATE OF FLORIDA, COUNTY OF ${data.county.toUpperCase()}\n\nThe foregoing instrument was acknowledged before me by means of □ physical presence or □ online notarization this _____ day of ____________, 20____, by ${data.grantorName}, who is personally known to me or who has produced ________________ as identification.`
+  );
+  doc.moveDown(1.5);
+  doc.moveTo(72, doc.y).lineTo(300, doc.y).stroke();
+  doc.moveDown(0.2);
+  doc.text("Notary Public, State of Florida");
+  doc.text("My Commission Expires: ____________");
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}
+
+// ─── Insurance Binder Request ───────────────────────────────────────────────
+export function generateInsuranceBinder(data: {
+  buyerName: string; propertyAddress: string; purchasePrice: number;
+  lenderName?: string; policyType?: string; annualPremium?: number; effectiveDate: string;
+}): string {
+  ensureDir(DOCS_DIR);
+  const filename = `insurance-binder-${Date.now()}.pdf`;
+  const filepath = path.join(DOCS_DIR, filename);
+  const doc = new PDFDocument({ margin: 72, size: "LETTER" });
+  doc.pipe(fs.createWriteStream(filepath));
+
+  doc.fontSize(18).font("Helvetica-Bold").text("INSURANCE BINDER REQUEST", { align: "center" });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").text("Homeowner's Insurance Requirements for Closing", { align: "center" });
+  doc.moveDown(1);
+  doc.moveTo(72, doc.y).lineTo(doc.page.width - 72, doc.y).stroke();
+  doc.moveDown(1);
+
+  doc.fontSize(10);
+  doc.text(`Buyer/Insured: ${data.buyerName}`);
+  doc.text(`Property: ${data.propertyAddress}`);
+  doc.text(`Purchase Price: ${formatCurrency(data.purchasePrice)}`);
+  doc.text(`Closing Date: ${data.effectiveDate}`);
+  if (data.lenderName) doc.text(`Lender: ${data.lenderName}`);
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("COVERAGE REQUIREMENTS");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text(`Dwelling Coverage (minimum): ${formatCurrency(data.purchasePrice)}`);
+  doc.text(`Policy Type: ${data.policyType || "HO-3 (Special Form) — recommended"}`);
+  doc.text("Liability Coverage: $100,000 minimum (recommended: $300,000)");
+  doc.text("Medical Payments: $5,000 minimum");
+  doc.text(`Effective Date: ${data.effectiveDate}`);
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("FLORIDA-SPECIFIC REQUIREMENTS");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text("□ Wind/Hurricane Coverage — Often separate from HO-3 in coastal FL counties");
+  doc.text("□ Flood Insurance — Required if in FEMA Zone A or AE; recommended for all properties");
+  doc.text("□ Sinkhole Coverage — Consider in Hillsborough, Pasco, Hernando counties");
+  doc.moveDown(0.5);
+  doc.text("□ 4-Point Inspection — Required for homes 30+ years old to obtain insurance");
+  doc.text("□ Wind Mitigation Report — Can reduce wind premium by 20-45%");
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("LENDER REQUIREMENTS");
+  doc.moveDown(0.4);
+  doc.fontSize(10).font("Helvetica");
+  doc.text("The insurance binder must be provided to the title company/closing agent BEFORE closing.");
+  doc.text("The binder must list the lender as mortgagee/loss payee:");
+  if (data.lenderName) doc.text(`    ${data.lenderName} — ISAOA/ATIMA`);
+  else doc.text("    [Lender Name] — ISAOA/ATIMA");
+  doc.moveDown(1);
+
+  doc.fontSize(11).font("Helvetica-Bold").text("INSURANCE SHOPPING TIPS");
+  doc.moveDown(0.4);
+  doc.fontSize(9).font("Helvetica");
+  doc.text("1. Get quotes from at least 3 insurers — FL rates vary dramatically");
+  doc.text("2. Ask about bundling discounts (auto + home)");
+  doc.text("3. Higher deductibles = lower premiums (but more out-of-pocket risk)");
+  doc.text("4. Wind mitigation inspection can save $500-2,000/year");
+  doc.text("5. Citizens Property Insurance is the last resort — check private options first");
+  doc.text(`6. Budget ${formatCurrency(Math.round(data.purchasePrice * 0.012))}-${formatCurrency(Math.round(data.purchasePrice * 0.02))}/year for FL homeowner's insurance`);
+  doc.moveDown(1.5);
+
+  doc.fontSize(8).fillColor("#666").text("This document is provided as guidance. Contact a licensed insurance agent for quotes and policy binding. Insurance must be in place before closing.", { align: "center" });
+
+  doc.end();
+  return `/uploads/documents/${filename}`;
+}

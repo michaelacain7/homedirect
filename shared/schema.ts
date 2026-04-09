@@ -386,3 +386,19 @@ export const professionalDocuments = pgTable("professional_documents", {
 export const insertProfessionalDocumentSchema = createInsertSchema(professionalDocuments).omit({ id: true, createdAt: true });
 export type InsertProfessionalDocument = z.infer<typeof insertProfessionalDocumentSchema>;
 export type ProfessionalDocument = typeof professionalDocuments.$inferSelect;
+
+// ── Questionnaire Responses (buyer/seller form data for document filling) ────
+export const questionnaireResponses = pgTable("questionnaire_responses", {
+  id: serial("id").primaryKey(),
+  transactionId: integer("transaction_id").notNull(),
+  userId: integer("user_id").notNull(),
+  role: text("role").notNull(), // "buyer" | "seller"
+  responses: text("responses").notNull().default("{}"), // JSON object of key-value pairs
+  completedSections: text("completed_sections").notNull().default("[]"), // JSON array of completed category names
+  createdAt: text("created_at").default(""),
+  updatedAt: text("updated_at").default(""),
+});
+
+export const insertQuestionnaireResponseSchema = createInsertSchema(questionnaireResponses).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertQuestionnaireResponse = z.infer<typeof insertQuestionnaireResponseSchema>;
+export type QuestionnaireResponse = typeof questionnaireResponses.$inferSelect;
