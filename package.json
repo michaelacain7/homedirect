@@ -8,7 +8,11 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "fine-tune:export": "tsx script/fine-tune.ts export",
+    "fine-tune:upload": "tsx script/fine-tune.ts upload",
+    "fine-tune:start": "tsx script/fine-tune.ts start",
+    "fine-tune:status": "tsx script/fine-tune.ts status"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -45,6 +49,7 @@
     "@types/leaflet": "^1.9.21",
     "@types/multer": "^2.1.0",
     "@types/nodemailer": "^8.0.0",
+    "@types/pg": "^8.20.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.7.0",
     "class-variance-authority": "^0.7.1",
@@ -67,6 +72,7 @@
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pdfkit": "^0.18.0",
+    "pg": "^8.20.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
