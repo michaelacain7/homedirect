@@ -6,8 +6,12 @@ import { createPaymentIntent, TEST_MODE } from "./payments";
 import { sendNewOfferEmail, sendOfferStatusEmail, sendWalkthroughScheduledEmail, sendWalkthroughAssignedEmail, sendDocumentReadyEmail, sendEmail } from "./email";
 import { getAINegotiationResponse } from "./ai-negotiation";
 import { getAdvisorResponse } from "./ai-advisor";
-import { chat, hasLLMProvider } from "./ai-engine";
+import { chat, chatStream, chatWithTools, chatWithConfidence, hasLLMProvider, getActiveProvider } from "./ai-engine";
 import { getBaseKnowledge, getPortalKnowledge } from "./knowledge-base";
+import { getRelevantContext } from "./vector-store";
+import { runAgent, type AgentContext } from "./ai-agent";
+import { runEvalSuite, getEvalCases, getEvalCasesByCategory } from "./ai-eval";
+import { toolDefinitions } from "./ai-tools";
 import { searchMLSListings } from "./mls-api";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -2330,5 +2334,281 @@ export function registerRoutes(server: Server, app: Express) {
     if (!proAccess || proAccess.status === "revoked") return res.status(404).json({ message: "Invalid portal link" });
     const docs = storage.getProfessionalDocuments(proAccess.id);
     res.json(docs);
+  });
+
+  // ========== AI AGENT (full agent loop with tool use) ==========
+  app.post("/api/agent/chat", requireAuth, async (req, res) => {
+    try {
+      const { message, history, context } = req.body;
+      if (!message) return res.status(400).json({ message: "message required" });
+
+      const user = req.user as any;
+      const agentContext: AgentContext = {
+        userId: user.id,
+        userRole: user.role || "buyer",
+        userName: user.fullName?.split(" ")[0] || "there",
+        page: context?.page || "/",
+        transactionId: context?.transactionId,
+        listingId: context?.listingId,
+        offerId: context?.offerId,
+      };
+
+      const result = await runAgent(message, history || [], agentContext);
+
+      res.json({
+        response: result.message,
+        actions: result.actions,
+        pendingActions: result.pendingActions,
+        confidence: result.confidence,
+        escalate: result.escalate,
+      });
+    } catch (error: any) {
+      console.error("Agent chat error:", error);
+      res.status(500).json({ message: "Failed to get agent response" });
+    }
+  });
+
+  // ========== AI AGENT — Confirm pending action ==========
+  app.post("/api/agent/confirm-action", requireAuth, async (req, res) => {
+    try {
+      const { action, confirmed } = req.body;
+      if (!action) return res.status(400).json({ message: "action required" });
+
+      if (!confirmed) {
+        return res.json({ message: "Action cancelled by user", status: "cancelled" });
+      }
+
+      // Execute the confirmed action through the tools system
+      const { executeTool } = await import("./ai-tools");
+      const user = req.user as any;
+      const result = await executeTool(action.tool, action.args, user.id);
+
+      res.json({
+        message: "Action executed successfully",
+        status: "executed",
+        result: JSON.parse(result),
+      });
+    } catch (error: any) {
+      console.error("Action confirmation error:", error);
+      res.status(500).json({ message: "Failed to execute action" });
+    }
+  });
+
+  // ========== AI AGENT — Streaming response ==========
+  app.post("/api/agent/stream", requireAuth, async (req, res) => {
+    try {
+      const { message, history, context } = req.body;
+      if (!message) return res.status(400).json({ message: "message required" });
+
+      const user = req.user as any;
+
+      // Build system prompt with RAG context
+      const ragContext = getRelevantContext(message, 5);
+      const systemPrompt = getBaseKnowledge() + "\n\n## RELEVANT KNOWLEDGE\n" + ragContext;
+
+      const conversationHistory = (history || []).slice(-10).map((m: any) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
+
+      const stream = await chatStream(
+        systemPrompt,
+        message,
+        conversationHistory,
+        1000
+      );
+
+      if (!stream) {
+        // No streaming provider — fall back to regular response
+        const { getAdvisorResponse } = await import("./ai-advisor");
+        const response = await getAdvisorResponse(message, history || [], {
+          page: context?.page || "/",
+          userRole: user?.role,
+          userName: user?.fullName?.split(" ")[0],
+        });
+        res.json({ response, streamed: false });
+        return;
+      }
+
+      // Set up SSE headers
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = typeof value === "string" ? value : decoder.decode(value);
+          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        }
+      } catch (streamErr) {
+        console.error("Stream read error:", streamErr);
+      }
+
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    } catch (error: any) {
+      console.error("Agent stream error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to stream response" });
+      }
+    }
+  });
+
+  // ========== RAG — Search knowledge base ==========
+  app.post("/api/ai/knowledge-search", async (req, res) => {
+    try {
+      const { query, topK, category } = req.body;
+      if (!query) return res.status(400).json({ message: "query required" });
+
+      const context = getRelevantContext(query, topK || 5, category);
+      res.json({ context, query });
+    } catch (error: any) {
+      console.error("Knowledge search error:", error);
+      res.status(500).json({ message: "Knowledge search failed" });
+    }
+  });
+
+  // ========== AI CONFIDENCE CHECK ==========
+  app.post("/api/ai/confidence-check", requireAuth, async (req, res) => {
+    try {
+      const { message, context } = req.body;
+      if (!message) return res.status(400).json({ message: "message required" });
+
+      const systemPrompt = getBaseKnowledge();
+      const result = await chatWithConfidence(systemPrompt, message);
+
+      res.json({
+        response: result?.content || "I'm not sure about that. Let me connect you with a professional.",
+        confidence: result?.confidence || 0,
+        escalationNeeded: result?.escalationNeeded ?? true,
+      });
+    } catch (error: any) {
+      console.error("Confidence check error:", error);
+      res.status(500).json({ message: "Confidence check failed" });
+    }
+  });
+
+  // ========== AI TOOLS — List available tools ==========
+  app.get("/api/ai/tools", requireAuth, (_req, res) => {
+    res.json({
+      tools: toolDefinitions.map((t: any) => ({
+        name: t.function.name,
+        description: t.function.description,
+      })),
+      count: toolDefinitions.length,
+    });
+  });
+
+  // ========== AI EVAL SUITE (admin only) ==========
+  app.get("/api/admin/eval/cases", requireAuth, requireAdmin, (_req, res) => {
+    try {
+      const cases = getEvalCases();
+      const categories = [...new Set(cases.map((c) => c.category))];
+      res.json({
+        total: cases.length,
+        categories,
+        cases: cases.map((c) => ({
+          id: c.id,
+          category: c.category,
+          description: c.description,
+          userMessage: c.userMessage,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Eval cases error:", error);
+      res.status(500).json({ message: "Failed to get eval cases" });
+    }
+  });
+
+  app.get("/api/admin/eval/cases/:category", requireAuth, requireAdmin, (req, res) => {
+    try {
+      const cases = getEvalCasesByCategory(req.params.category);
+      res.json({ category: req.params.category, total: cases.length, cases });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get eval cases" });
+    }
+  });
+
+  app.post("/api/admin/eval/run", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { category } = req.body;
+      let cases;
+      if (category) {
+        cases = getEvalCasesByCategory(category);
+      }
+
+      console.log(`[Eval] Starting eval suite${category ? ` (category: ${category})` : ""} — ${cases ? cases.length : "all"} cases`);
+
+      const result = await runEvalSuite(cases);
+
+      console.log(`[Eval] Complete — ${result.passed}/${result.totalCases} passed (${(result.score * 100).toFixed(1)}%)`);
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Eval run error:", error);
+      res.status(500).json({ message: "Eval suite failed" });
+    }
+  });
+
+  // ========== AI STATUS — Provider info & diagnostics ==========
+  app.get("/api/ai/status", requireAuth, requireAdmin, (_req, res) => {
+    res.json({
+      provider: getActiveProvider(),
+      hasProvider: hasLLMProvider(),
+      modelSize: process.env.AI_MODEL_SIZE || "small",
+      features: {
+        chat: true,
+        streaming: hasLLMProvider(),
+        toolCalling: hasLLMProvider(),
+        confidenceScoring: hasLLMProvider(),
+        rag: true,
+        agentLoop: true,
+        evalSuite: true,
+      },
+      toolCount: toolDefinitions.length,
+      evalCaseCount: getEvalCases().length,
+    });
+  });
+
+  // ========== ENHANCED TRAINING DATA ==========
+  app.get("/api/admin/training-data/stats", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const { getTrainingDataCount, getTrainingExamples } = await import("./training-data");
+      const count = getTrainingDataCount();
+      const examples = getTrainingExamples();
+      const categories = new Map<string, number>();
+
+      // Count by first user message keyword patterns
+      for (const ex of examples) {
+        const userMsg = ex.messages[1]?.content?.toLowerCase() || "";
+        let cat = "general";
+        if (userMsg.includes("florida") || userMsg.includes("law") || userMsg.includes("statute")) cat = "florida_law";
+        else if (userMsg.includes("offer") || userMsg.includes("negotiat") || userMsg.includes("counter")) cat = "negotiation";
+        else if (userMsg.includes("inspect") || userMsg.includes("repair")) cat = "inspection";
+        else if (userMsg.includes("mortgage") || userMsg.includes("loan") || userMsg.includes("financ")) cat = "mortgage";
+        else if (userMsg.includes("apprais")) cat = "appraisal";
+        else if (userMsg.includes("title") || userMsg.includes("closing") || userMsg.includes("escrow")) cat = "title_closing";
+        else if (userMsg.includes("homedirect") || userMsg.includes("platform") || userMsg.includes("chaperone")) cat = "platform";
+        else if (userMsg.includes("insurance") || userMsg.includes("flood") || userMsg.includes("wind")) cat = "insurance";
+        else if (userMsg.includes("market") || userMsg.includes("price") || userMsg.includes("trend")) cat = "market";
+        categories.set(cat, (categories.get(cat) || 0) + 1);
+      }
+
+      res.json({
+        totalExamples: count,
+        byCategory: Object.fromEntries(categories),
+        format: "OpenAI chat JSONL",
+        readyForFineTuning: count >= 500,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get training data stats" });
+    }
   });
 }
