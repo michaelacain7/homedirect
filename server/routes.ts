@@ -12,7 +12,7 @@ import { getRelevantContext } from "./vector-store";
 import { runAgent, type AgentContext } from "./ai-agent";
 import { runEvalSuite, getEvalCases, getEvalCasesByCategory } from "./ai-eval";
 import { toolDefinitions } from "./ai-tools";
-import { getDocumentSummary, sendDocumentsForSigning, buildTransactionContext, getCurrentStage, getDocumentsForRole, getFullDocumentPlan, DOCUMENT_REGISTRY } from "./document-orchestrator";
+import { getDocumentSummary, sendDocumentsForSigning, buildTransactionContext, getCurrentStage, getDocumentsForRole, getFullDocumentPlan, analyzeTransactionDocuments, DOCUMENT_REGISTRY } from "./document-orchestrator";
 import { fillDocument, generateFullQuestionnaire, getConfiguredDocuments, isDocumentReady } from "./document-filler";
 import { encrypt, decrypt, encryptObject, decryptObject, prepareForDisplay, decryptForAgent, isEncryptionConfigured } from "./encryption";
 import { isDocuSignConfigured, getEnvelopeStatus, getSigningUrl } from "./docusign";
@@ -1063,99 +1063,68 @@ export function registerRoutes(server: Server, app: Express) {
         });
         storage.updateListing(offer.listingId, { status: "pending" });
 
-        // Generate PDFs and create document records
+        // ── Smart Document Generation via Orchestrator ──
+        // The agent analyzes this specific transaction and generates ONLY the documents needed.
         const closingDate = offer.closingDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
         const contingencies = (() => { try { return JSON.parse(offer.contingencies || "[]"); } catch { return []; } })();
-
         const fullAddress = `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`;
         const buyerFullName = buyer?.fullName || "Buyer";
         const sellerFullName = seller?.fullName || "Seller";
+        const isCash = offer.financingType === "cash";
+        const loanAmount = isCash ? 0 : offer.amount * (1 - ((offer.downPaymentPercent || 20) / 100));
 
-        // Generate all transaction documents
-        const generatedDocs: Record<string, string | undefined> = {};
-        try {
-          generatedDocs.purchaseAgreement = generatePurchaseAgreement({
-            buyerName: buyerFullName, sellerName: sellerFullName,
-            propertyAddress: fullAddress, purchasePrice: offer.amount, closingDate, contingencies,
-          });
-          generatedDocs.sellerDisclosure = generateSellerDisclosure({
-            sellerName: sellerFullName, propertyAddress: fullAddress, yearBuilt: listing.yearBuilt || undefined,
-          });
-          generatedDocs.closingDisclosure = generateClosingDisclosure({
-            buyerName: buyerFullName, sellerName: sellerFullName,
-            propertyAddress: fullAddress, purchasePrice: offer.amount, platformFee: offer.amount * 0.01, closingDate,
-          });
-          // Florida-required disclosures
-          generatedDocs.radonDisclosure = generateRadonDisclosure({
-            sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress,
-          });
-          generatedDocs.floodZoneDisclosure = generateFloodZoneDisclosure({
-            sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress,
-          });
-          // Lead paint disclosure (only for pre-1978 homes)
-          if (listing.yearBuilt && listing.yearBuilt < 1978) {
-            generatedDocs.leadPaintDisclosure = generateLeadPaintDisclosure({
-              buyerName: buyerFullName, sellerName: sellerFullName,
-              propertyAddress: fullAddress, yearBuilt: listing.yearBuilt,
-            });
-          }
-          // HOA disclosure (if HOA fee exists)
-          if (listing.hoaFee && listing.hoaFee > 0) {
-            generatedDocs.hoaDisclosure = generateHOADisclosure({
-              sellerName: sellerFullName, buyerName: buyerFullName,
-              propertyAddress: fullAddress, monthlyFee: listing.hoaFee,
-            });
-          }
-          // Final walkthrough checklist
-          generatedDocs.finalWalkthrough = generateFinalWalkthroughChecklist({
-            buyerName: buyerFullName, propertyAddress: fullAddress,
-            scheduledDate: closingDate,
-          });
-          // Closing statement
-          const loanAmount = offer.amount * (1 - ((offer.downPaymentPercent || 20) / 100));
-          generatedDocs.closingStatement = generateClosingStatement({
-            buyerName: buyerFullName, sellerName: sellerFullName,
-            propertyAddress: fullAddress, purchasePrice: offer.amount,
-            loanAmount, closingDate,
-          });
-          // Deed
-          generatedDocs.deed = generateDeed({
-            grantorName: sellerFullName, granteeName: buyerFullName,
-            propertyAddress: fullAddress, county: listing.city, purchasePrice: offer.amount,
-          });
-          // Insurance binder request
-          generatedDocs.insuranceBinder = generateInsuranceBinder({
-            buyerName: buyerFullName, propertyAddress: fullAddress,
-            purchasePrice: offer.amount, effectiveDate: closingDate,
-          });
-        } catch (err) {
-          console.error("PDF generation error:", err);
+        // Map of document generators by name
+        const generators: Record<string, () => string | undefined> = {
+          "Purchase Agreement": () => generatePurchaseAgreement({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, closingDate, contingencies }),
+          "Seller's Property Disclosure": () => generateSellerDisclosure({ sellerName: sellerFullName, propertyAddress: fullAddress, yearBuilt: listing.yearBuilt || undefined }),
+          "Radon Disclosure Notice": () => generateRadonDisclosure({ sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress }),
+          "Flood Zone Disclosure": () => generateFloodZoneDisclosure({ sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress }),
+          "Lead-Based Paint Disclosure": () => generateLeadPaintDisclosure({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, yearBuilt: listing.yearBuilt || 1970 }),
+          "HOA/Condo Disclosure": () => generateHOADisclosure({ sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress, monthlyFee: listing.hoaFee || 0 }),
+          "Closing Disclosure (CD)": () => generateClosingDisclosure({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, platformFee: offer.amount * 0.01, closingDate }),
+          "Closing Statement": () => generateClosingStatement({ buyerName: buyerFullName, sellerName: sellerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, loanAmount, closingDate }),
+          "Final Walkthrough Checklist": () => generateFinalWalkthroughChecklist({ buyerName: buyerFullName, propertyAddress: fullAddress, scheduledDate: closingDate }),
+          "Warranty Deed": () => generateDeed({ grantorName: sellerFullName, granteeName: buyerFullName, propertyAddress: fullAddress, county: listing.city, purchasePrice: offer.amount }),
+          "Insurance Binder Request": () => generateInsuranceBinder({ buyerName: buyerFullName, propertyAddress: fullAddress, purchasePrice: offer.amount, effectiveDate: closingDate }),
+          "Promissory Note": () => generatePromissoryNote({ borrowerName: buyerFullName, lenderName: "Lender TBD", propertyAddress: fullAddress, loanAmount, interestRate: 7.0, termYears: 30, monthlyPayment: Math.round(loanAmount * 0.006653), firstPaymentDate: closingDate }),
+        };
+
+        // Use the orchestrator to determine which documents this transaction needs
+        const analysis = analyzeTransactionDocuments(transaction.id);
+        const allNeededDocs = [...analysis.requiredNow, ...analysis.requiredLater];
+
+        console.log(`[Documents] Transaction ${transaction.id}: ${allNeededDocs.length} docs needed, ${analysis.notNeeded.length} excluded`);
+        if (analysis.notNeeded.length > 0) {
+          console.log(`[Documents] Excluded: ${analysis.notNeeded.map(d => `${d.name} (${d.reason})`).join(", ")}`);
         }
 
-        // Create initial closing documents
-        const docTypes = [
-          { type: "contract", name: "Purchase Agreement", url: generatedDocs.purchaseAgreement },
-          { type: "disclosure", name: "Seller's Property Disclosure", url: generatedDocs.sellerDisclosure },
-          { type: "disclosure", name: "Radon Disclosure Notice", url: generatedDocs.radonDisclosure },
-          { type: "disclosure", name: "Flood Zone Disclosure", url: generatedDocs.floodZoneDisclosure },
-          ...(generatedDocs.leadPaintDisclosure ? [{ type: "disclosure", name: "Lead-Based Paint Disclosure", url: generatedDocs.leadPaintDisclosure }] : []),
-          ...(generatedDocs.hoaDisclosure ? [{ type: "disclosure", name: "HOA/Condo Disclosure", url: generatedDocs.hoaDisclosure }] : []),
-          { type: "title", name: "Title Search Report", url: undefined },
-          { type: "inspection", name: "Home Inspection Report", url: undefined },
-          { type: "closing", name: "Closing Disclosure (CD)", url: generatedDocs.closingDisclosure },
-          { type: "closing", name: "Closing Statement", url: generatedDocs.closingStatement },
-          { type: "closing", name: "Warranty Deed", url: generatedDocs.deed },
-          { type: "closing", name: "Final Walkthrough Checklist", url: generatedDocs.finalWalkthrough },
-          { type: "closing", name: "Insurance Binder Request", url: generatedDocs.insuranceBinder },
-        ];
-        docTypes.forEach(d => {
+        // Generate only the documents that the orchestrator says are needed
+        const generatedDocTypes: Array<{ type: string; name: string; url?: string }> = [];
+        for (const doc of allNeededDocs) {
+          const generator = generators[doc.name];
+          let url: string | undefined;
+          if (generator) {
+            try { url = generator(); } catch (err) { console.error(`[Documents] Failed to generate ${doc.name}:`, err); }
+          }
+          // Find the registry entry for the document type
+          const regEntry = DOCUMENT_REGISTRY.find(r => r.name === doc.name);
+          generatedDocTypes.push({ type: regEntry?.documentType || "closing", name: doc.name, url });
+        }
+
+        // Also add placeholder entries for third-party docs that will be uploaded
+        if (!isCash) {
+          generatedDocTypes.push({ type: "title", name: "Title Search Report", url: undefined });
+          generatedDocTypes.push({ type: "inspection", name: "Home Inspection Report", url: undefined });
+        }
+
+        // Create document records
+        generatedDocTypes.forEach(d => {
           storage.createDocument({
             listingId: offer.listingId, offerId: offer.id,
-            type: d.type, name: d.name, status: "draft",
+            type: d.type, name: d.name, status: d.url ? "draft" : "pending_review",
             content: d.url || null,
           });
-          // Notify buyer about document
-          sendDocumentReadyEmail(buyer?.email || "", buyer?.fullName || "Buyer", d.name, `${listing.address}, ${listing.city}, ${listing.state}`).catch(() => {});
+          sendDocumentReadyEmail(buyer?.email || "", buyerFullName, d.name, `${listing.address}, ${listing.city}, ${listing.state}`).catch(() => {});
           storage.createNotification({
             userId: offer.buyerId,
             type: "document_ready",

@@ -307,6 +307,20 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "analyze_transaction_documents",
+      description: "Analyze a transaction and determine exactly which documents are needed based on the specific deal (cash vs financed, pre-1978, HOA, contingencies, coastal, etc.). Returns what's needed now, what's needed later, and what's NOT needed with reasons. Use this to give the buyer/seller a clear picture of their paperwork.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID to analyze" },
+        },
+        required: ["transactionId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "check_document_readiness",
       description: "Check if a document has all required data to be filled out and sent for signing. Shows what's complete and what info is still needed from the buyer or seller. Use when managing the transaction paperwork.",
       parameters: {
@@ -630,6 +644,12 @@ export async function executeTool(
         closingCostCredit: credit,
         script: `Counter-offer at $${suggested.toLocaleString()}${credit > 0 ? ` with $${credit.toLocaleString()} closing cost credit` : ""}.`,
       });
+    }
+
+    case "analyze_transaction_documents": {
+      const { analyzeTransactionDocuments } = await import("./document-orchestrator");
+      const analysis = analyzeTransactionDocuments(args.transactionId);
+      return JSON.stringify(analysis);
     }
 
     case "check_document_readiness": {

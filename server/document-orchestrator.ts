@@ -37,10 +37,19 @@ export interface TransactionContext {
   seller: any;
   hasHOA: boolean;
   isPreMPC: boolean;  // pre-1978 (lead paint)
+  isCondo: boolean;
+  isCash: boolean;
+  hasInspectionContingency: boolean;
+  hasFinancingContingency: boolean;
+  hasAppraisalContingency: boolean;
   hasRepairRequest: boolean;
   inspectionComplete: boolean;
   appraisalComplete: boolean;
   titleClear: boolean;
+  isCoastal: boolean;     // wind coverage needed
+  isSinkholeArea: boolean;
+  isFloodZone: boolean;
+  propertyAge: number;
 }
 
 // ── Master Document Registry ─────────────────────────────────────────────────
@@ -123,6 +132,7 @@ export const DOCUMENT_REGISTRY: DocumentRequirement[] = [
     description: "Final closing costs, loan terms, and transaction summary.",
     signers: ["both"],
     stage: "pre_closing",
+    condition: (ctx) => !ctx.isCash, // Cash deals don't have a federally-required CD from a lender
     priority: 1,
     explanation: "The Closing Disclosure is a federally required document that shows your final loan terms, monthly payment, and all closing costs. By law, you must receive this at least 3 BUSINESS DAYS before closing. Review every line carefully — compare it to your Loan Estimate. If anything looks wrong, speak up before you sign at the closing table.",
   },
@@ -150,6 +160,7 @@ export const DOCUMENT_REGISTRY: DocumentRequirement[] = [
     description: "Homeowner's insurance requirements for closing.",
     signers: ["buyer"],
     stage: "pre_closing",
+    condition: (ctx) => !ctx.isCash || true, // Always needed — even cash buyers need insurance
     priority: 2,
     explanation: "Your lender requires proof of homeowner's insurance before closing. This document outlines the coverage requirements and Florida-specific needs (wind, flood, sinkhole). Get quotes from at least 3 insurers. The insurance binder must list your lender as loss payee and be delivered to the title company before closing day.",
   },
@@ -191,6 +202,24 @@ export function buildTransactionContext(transactionId: number): TransactionConte
   const seller = storage.getUser(txn.sellerId);
   const repairReq = storage.getRepairRequestByTransaction(transactionId);
 
+  // Parse contingencies from offer
+  const contingencies: string[] = (() => {
+    try { return JSON.parse(offer?.contingencies || "[]"); } catch { return []; }
+  })();
+  const contingencyLower = contingencies.map((c: string) => c.toLowerCase());
+
+  // Detect coastal areas (Florida Gulf/Atlantic coast cities)
+  const coastalCities = ["clearwater", "st. petersburg", "st pete", "tampa", "sarasota", "fort myers", "naples", "miami", "fort lauderdale", "west palm", "daytona", "jacksonville beach", "key west", "cape coral"];
+  const cityLower = (listing?.city || "").toLowerCase();
+  const isCoastal = coastalCities.some(c => cityLower.includes(c));
+
+  // Sinkhole-prone counties
+  const sinkholeAreas = ["hillsborough", "pasco", "hernando", "pinellas", "polk"];
+  const isSinkholeArea = sinkholeAreas.some(c => cityLower.includes(c));
+
+  const yearBuilt = listing?.yearBuilt || 2000;
+  const propertyAge = new Date().getFullYear() - yearBuilt;
+
   return {
     transaction: txn,
     listing,
@@ -198,12 +227,92 @@ export function buildTransactionContext(transactionId: number): TransactionConte
     buyer,
     seller,
     hasHOA: !!(listing?.hoaFee && listing.hoaFee > 0),
-    isPreMPC: !!(listing?.yearBuilt && listing.yearBuilt < 1978),
+    isCondo: listing?.propertyType === "condo" || listing?.propertyType === "townhouse",
+    isPreMPC: yearBuilt < 1978,
+    isCash: offer?.financingType === "cash",
+    hasInspectionContingency: contingencyLower.includes("inspection"),
+    hasFinancingContingency: contingencyLower.includes("financing"),
+    hasAppraisalContingency: contingencyLower.includes("appraisal"),
     hasRepairRequest: !!repairReq,
     inspectionComplete: txn.inspectionStatus === "completed" || txn.inspectionStatus === "passed",
     appraisalComplete: txn.appraisalStatus === "completed" || txn.appraisalStatus === "passed",
     titleClear: txn.titleStatus === "clear",
+    isCoastal,
+    isSinkholeArea,
+    isFloodZone: false, // Would come from FEMA API or listing data
+    propertyAge,
   };
+}
+
+/**
+ * AI agent calls this to analyze a transaction and get a smart recommendation
+ * of exactly which documents are needed and why. No duplicates, no unnecessary docs.
+ */
+export function analyzeTransactionDocuments(transactionId: number): {
+  summary: string;
+  requiredNow: Array<{ name: string; reason: string; signers: string[] }>;
+  requiredLater: Array<{ name: string; stage: string; reason: string }>;
+  notNeeded: Array<{ name: string; reason: string }>;
+  flags: string[];
+} {
+  const ctx = buildTransactionContext(transactionId);
+  if (!ctx) return { summary: "Transaction not found", requiredNow: [], requiredLater: [], notNeeded: [], flags: [] };
+
+  const stage = getCurrentStage(ctx);
+  const flags: string[] = [];
+
+  // Analyze property-specific concerns
+  if (ctx.propertyAge > 30) flags.push(`Home is ${ctx.propertyAge} years old — 4-point inspection likely required for insurance`);
+  if (ctx.isPreMPC) flags.push("Pre-1978 home — lead-based paint disclosure REQUIRED by federal law");
+  if (ctx.isCoastal) flags.push("Coastal property — separate wind coverage may be needed");
+  if (ctx.isSinkholeArea) flags.push("Property in sinkhole-prone area — consider sinkhole coverage");
+  if (ctx.isCash) flags.push("Cash transaction — no lender documents needed (Closing Disclosure, Promissory Note)");
+  if (ctx.hasHOA) flags.push("HOA property — buyer has 3-day rescission right after receiving HOA docs");
+  if (ctx.isCondo) flags.push("Condo — Florida SB 4-D structural inspection requirements may apply");
+
+  const requiredNow: Array<{ name: string; reason: string; signers: string[] }> = [];
+  const requiredLater: Array<{ name: string; stage: string; reason: string }> = [];
+  const notNeeded: Array<{ name: string; reason: string }> = [];
+
+  for (const doc of DOCUMENT_REGISTRY) {
+    const meetsCondition = !doc.condition || doc.condition(ctx);
+
+    if (!meetsCondition) {
+      // Document not needed for this transaction
+      let reason = "Not applicable to this transaction";
+      if (doc.name === "Lead-Based Paint Disclosure") reason = `Home built in ${ctx.listing?.yearBuilt || "unknown"} — only required for pre-1978`;
+      if (doc.name === "HOA/Condo Disclosure") reason = "No HOA or condo association";
+      if (doc.name === "Repair Addendum") reason = "No repair request submitted yet";
+      if (doc.name === "Promissory Note") reason = "Cash transaction — no mortgage";
+      if (doc.name === "Closing Disclosure (CD)") reason = "Cash transaction — no lender-required CD";
+      notNeeded.push({ name: doc.name, reason });
+      continue;
+    }
+
+    if (doc.stage === stage) {
+      let reason = doc.description;
+      if (doc.name === "Purchase Agreement") reason = "Must be signed first to make the contract binding";
+      if (doc.name === "Seller's Property Disclosure") reason = "Florida law requires seller to disclose known defects";
+      if (doc.name === "Radon Disclosure Notice") reason = "Florida statute requires this in every residential transaction";
+      requiredNow.push({
+        name: doc.name,
+        reason,
+        signers: doc.signers.includes("both") ? ["buyer", "seller"] : [...doc.signers],
+      });
+    } else {
+      requiredLater.push({
+        name: doc.name,
+        stage: doc.stage,
+        reason: doc.description,
+      });
+    }
+  }
+
+  const totalDocs = requiredNow.length + requiredLater.length;
+  const listing = ctx.listing;
+  const summary = `This transaction for ${listing?.address || "the property"} at $${(ctx.transaction.salePrice || 0).toLocaleString()} requires ${totalDocs} documents total. ${requiredNow.length} need attention now (${stage.replace(/_/g, " ")} stage), ${requiredLater.length} will be needed at later stages.${ctx.isCash ? " Cash deal — lender docs excluded." : ""}${ctx.isPreMPC ? " Pre-1978 home — lead paint disclosure included." : ""}${ctx.hasHOA ? " HOA property — association docs required." : ""}`;
+
+  return { summary, requiredNow, requiredLater, notNeeded, flags };
 }
 
 /**
