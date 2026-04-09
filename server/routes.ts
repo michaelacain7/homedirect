@@ -19,7 +19,7 @@ import multer from "multer";
 import { passport } from "./auth";
 import fs from "fs";
 import path from "path";
-import { generatePurchaseAgreement, generateSellerDisclosure, generateClosingDisclosure } from "./documents";
+import { generatePurchaseAgreement, generateSellerDisclosure, generateClosingDisclosure, generateLeadPaintDisclosure, generateRadonDisclosure, generateFloodZoneDisclosure, generateRepairAddendum, generateFinalWalkthroughChecklist, generateClosingStatement, generatePromissoryNote, generateDeed, generateHOADisclosure, generateInsuranceBinder } from "./documents";
 import crypto from "crypto";
 
 // Ensure uploads directory exists
@@ -963,30 +963,66 @@ export function registerRoutes(server: Server, app: Express) {
         const closingDate = offer.closingDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
         const contingencies = (() => { try { return JSON.parse(offer.contingencies || "[]"); } catch { return []; } })();
 
-        let purchaseAgreementUrl: string | undefined;
-        let disclosureUrl: string | undefined;
-        let closingDisclosureUrl: string | undefined;
+        const fullAddress = `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`;
+        const buyerFullName = buyer?.fullName || "Buyer";
+        const sellerFullName = seller?.fullName || "Seller";
+
+        // Generate all transaction documents
+        const generatedDocs: Record<string, string | undefined> = {};
         try {
-          purchaseAgreementUrl = generatePurchaseAgreement({
-            buyerName: buyer?.fullName || "Buyer",
-            sellerName: seller?.fullName || "Seller",
-            propertyAddress: `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`,
-            purchasePrice: offer.amount,
-            closingDate,
-            contingencies,
+          generatedDocs.purchaseAgreement = generatePurchaseAgreement({
+            buyerName: buyerFullName, sellerName: sellerFullName,
+            propertyAddress: fullAddress, purchasePrice: offer.amount, closingDate, contingencies,
           });
-          disclosureUrl = generateSellerDisclosure({
-            sellerName: seller?.fullName || "Seller",
-            propertyAddress: `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`,
-            yearBuilt: listing.yearBuilt || undefined,
+          generatedDocs.sellerDisclosure = generateSellerDisclosure({
+            sellerName: sellerFullName, propertyAddress: fullAddress, yearBuilt: listing.yearBuilt || undefined,
           });
-          closingDisclosureUrl = generateClosingDisclosure({
-            buyerName: buyer?.fullName || "Buyer",
-            sellerName: seller?.fullName || "Seller",
-            propertyAddress: `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}`,
-            purchasePrice: offer.amount,
-            platformFee: offer.amount * 0.01,
-            closingDate,
+          generatedDocs.closingDisclosure = generateClosingDisclosure({
+            buyerName: buyerFullName, sellerName: sellerFullName,
+            propertyAddress: fullAddress, purchasePrice: offer.amount, platformFee: offer.amount * 0.01, closingDate,
+          });
+          // Florida-required disclosures
+          generatedDocs.radonDisclosure = generateRadonDisclosure({
+            sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress,
+          });
+          generatedDocs.floodZoneDisclosure = generateFloodZoneDisclosure({
+            sellerName: sellerFullName, buyerName: buyerFullName, propertyAddress: fullAddress,
+          });
+          // Lead paint disclosure (only for pre-1978 homes)
+          if (listing.yearBuilt && listing.yearBuilt < 1978) {
+            generatedDocs.leadPaintDisclosure = generateLeadPaintDisclosure({
+              buyerName: buyerFullName, sellerName: sellerFullName,
+              propertyAddress: fullAddress, yearBuilt: listing.yearBuilt,
+            });
+          }
+          // HOA disclosure (if HOA fee exists)
+          if (listing.hoaFee && listing.hoaFee > 0) {
+            generatedDocs.hoaDisclosure = generateHOADisclosure({
+              sellerName: sellerFullName, buyerName: buyerFullName,
+              propertyAddress: fullAddress, monthlyFee: listing.hoaFee,
+            });
+          }
+          // Final walkthrough checklist
+          generatedDocs.finalWalkthrough = generateFinalWalkthroughChecklist({
+            buyerName: buyerFullName, propertyAddress: fullAddress,
+            scheduledDate: closingDate,
+          });
+          // Closing statement
+          const loanAmount = offer.amount * (1 - ((offer.downPaymentPercent || 20) / 100));
+          generatedDocs.closingStatement = generateClosingStatement({
+            buyerName: buyerFullName, sellerName: sellerFullName,
+            propertyAddress: fullAddress, purchasePrice: offer.amount,
+            loanAmount, closingDate,
+          });
+          // Deed
+          generatedDocs.deed = generateDeed({
+            grantorName: sellerFullName, granteeName: buyerFullName,
+            propertyAddress: fullAddress, county: listing.city, purchasePrice: offer.amount,
+          });
+          // Insurance binder request
+          generatedDocs.insuranceBinder = generateInsuranceBinder({
+            buyerName: buyerFullName, propertyAddress: fullAddress,
+            purchasePrice: offer.amount, effectiveDate: closingDate,
           });
         } catch (err) {
           console.error("PDF generation error:", err);
@@ -994,11 +1030,19 @@ export function registerRoutes(server: Server, app: Express) {
 
         // Create initial closing documents
         const docTypes = [
-          { type: "contract", name: "Purchase Agreement", url: purchaseAgreementUrl },
-          { type: "disclosure", name: "Seller's Property Disclosure", url: disclosureUrl },
+          { type: "contract", name: "Purchase Agreement", url: generatedDocs.purchaseAgreement },
+          { type: "disclosure", name: "Seller's Property Disclosure", url: generatedDocs.sellerDisclosure },
+          { type: "disclosure", name: "Radon Disclosure Notice", url: generatedDocs.radonDisclosure },
+          { type: "disclosure", name: "Flood Zone Disclosure", url: generatedDocs.floodZoneDisclosure },
+          ...(generatedDocs.leadPaintDisclosure ? [{ type: "disclosure", name: "Lead-Based Paint Disclosure", url: generatedDocs.leadPaintDisclosure }] : []),
+          ...(generatedDocs.hoaDisclosure ? [{ type: "disclosure", name: "HOA/Condo Disclosure", url: generatedDocs.hoaDisclosure }] : []),
           { type: "title", name: "Title Search Report", url: undefined },
           { type: "inspection", name: "Home Inspection Report", url: undefined },
-          { type: "closing", name: "Closing Disclosure (CD)", url: closingDisclosureUrl },
+          { type: "closing", name: "Closing Disclosure (CD)", url: generatedDocs.closingDisclosure },
+          { type: "closing", name: "Closing Statement", url: generatedDocs.closingStatement },
+          { type: "closing", name: "Warranty Deed", url: generatedDocs.deed },
+          { type: "closing", name: "Final Walkthrough Checklist", url: generatedDocs.finalWalkthrough },
+          { type: "closing", name: "Insurance Binder Request", url: generatedDocs.insuranceBinder },
         ];
         docTypes.forEach(d => {
           storage.createDocument({
@@ -2094,6 +2138,109 @@ export function registerRoutes(server: Server, app: Express) {
     });
 
     res.json(repairReq);
+  });
+
+  // ========== DOCUMENT GENERATION ON DEMAND ==========
+
+  // Generate Repair Addendum PDF
+  app.post("/api/transactions/:id/repair-addendum", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const repairReq = storage.getRepairRequestByTransaction(txnId);
+      if (!repairReq) return res.status(404).json({ message: "No repair request found" });
+
+      const listing = storage.getListing(txn.listingId);
+      const buyer = storage.getUser(txn.buyerId);
+      const seller = storage.getUser(txn.sellerId);
+
+      const items = (() => { try { return JSON.parse(repairReq.buyerItems || "[]"); } catch { return []; } })();
+      const totalCredits = items.reduce((sum: number, item: any) => sum + (item.estimatedCost || 0), 0);
+
+      const url = generateRepairAddendum({
+        buyerName: buyer?.fullName || "Buyer",
+        sellerName: seller?.fullName || "Seller",
+        propertyAddress: listing ? `${listing.address}, ${listing.city}, ${listing.state} ${listing.zip}` : "Property",
+        purchasePrice: txn.salePrice,
+        items,
+        totalCreditsRequested: totalCredits,
+      });
+
+      // Create document record
+      storage.createDocument({
+        listingId: txn.listingId, offerId: txn.offerId,
+        type: "inspection", name: "Repair Addendum", status: "draft", content: url,
+      });
+
+      res.json({ url, message: "Repair Addendum generated" });
+    } catch (error: any) {
+      console.error("Repair addendum error:", error);
+      res.status(500).json({ message: "Failed to generate repair addendum" });
+    }
+  });
+
+  // Generate Promissory Note
+  app.post("/api/transactions/:id/promissory-note", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const buyer = storage.getUser(txn.buyerId);
+      const { lenderName, interestRate, termYears, monthlyPayment } = req.body;
+      const offer = storage.getOffer(txn.offerId);
+      const downPct = (offer?.downPaymentPercent || 20) / 100;
+      const loanAmount = txn.salePrice * (1 - downPct);
+
+      const url = generatePromissoryNote({
+        borrowerName: buyer?.fullName || "Borrower",
+        lenderName: lenderName || "Lender",
+        propertyAddress: "Property",
+        loanAmount,
+        interestRate: interestRate || 7.0,
+        termYears: termYears || 30,
+        monthlyPayment: monthlyPayment || Math.round(loanAmount * 0.006653),
+        firstPaymentDate: txn.closingDate || new Date().toISOString().split("T")[0],
+      });
+
+      storage.createDocument({
+        listingId: txn.listingId, offerId: txn.offerId,
+        type: "closing", name: "Promissory Note", status: "draft", content: url,
+      });
+
+      res.json({ url, message: "Promissory Note generated" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate promissory note" });
+    }
+  });
+
+  // List all available document generators
+  app.get("/api/documents/generators", requireAuth, (_req, res) => {
+    res.json({
+      autoGenerated: [
+        "Purchase Agreement", "Seller's Property Disclosure", "Closing Disclosure",
+        "Radon Disclosure Notice", "Flood Zone Disclosure", "Closing Statement",
+        "Warranty Deed", "Final Walkthrough Checklist", "Insurance Binder Request",
+      ],
+      conditional: [
+        { name: "Lead-Based Paint Disclosure", condition: "Pre-1978 homes only" },
+        { name: "HOA/Condo Disclosure", condition: "Properties with HOA fees" },
+      ],
+      onDemand: [
+        { name: "Repair Addendum", endpoint: "POST /api/transactions/:id/repair-addendum" },
+        { name: "Promissory Note", endpoint: "POST /api/transactions/:id/promissory-note" },
+      ],
+      thirdParty: [
+        "Title Search Report (uploaded by title company)",
+        "Home Inspection Report (uploaded by inspector)",
+        "Appraisal Report (uploaded by appraiser)",
+        "Loan Estimate (uploaded by lender)",
+        "4-Point Inspection (uploaded by inspector)",
+        "Wind Mitigation Report (uploaded by inspector)",
+      ],
+    });
   });
 
   // ========== PROFESSIONAL PORTAL ==========
