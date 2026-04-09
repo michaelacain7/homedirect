@@ -7,6 +7,7 @@
  */
 
 import { storage } from "./storage";
+import { decryptObject } from "./encryption";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -228,7 +229,9 @@ export function fillDocument(
   const buyer = storage.getUser(txn.buyerId);
   const seller = storage.getUser(txn.sellerId);
 
-  const data = { buyer, seller, listing, offer, transaction: txn, questionnaire: questionnaireResponses };
+  // Decrypt any encrypted questionnaire responses for document filling
+  const decryptedResponses = decryptObject(questionnaireResponses);
+  const data = { buyer, seller, listing, offer, transaction: txn, questionnaire: decryptedResponses };
 
   const filledFields: Record<string, any> = {};
   const missingFields: QuestionnaireQuestion[] = [];

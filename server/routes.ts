@@ -14,6 +14,7 @@ import { runEvalSuite, getEvalCases, getEvalCasesByCategory } from "./ai-eval";
 import { toolDefinitions } from "./ai-tools";
 import { getDocumentSummary, sendDocumentsForSigning, buildTransactionContext, getCurrentStage, getDocumentsForRole, getFullDocumentPlan, DOCUMENT_REGISTRY } from "./document-orchestrator";
 import { fillDocument, generateFullQuestionnaire, getConfiguredDocuments, isDocumentReady } from "./document-filler";
+import { encrypt, decrypt, encryptObject, decryptObject, prepareForDisplay, decryptForAgent, isEncryptionConfigured } from "./encryption";
 import { isDocuSignConfigured, getEnvelopeStatus, getSigningUrl } from "./docusign";
 import { searchMLSListings } from "./mls-api";
 import { z } from "zod";
@@ -595,6 +596,106 @@ function seedDatabase() {
     senderType: "professional", senderName: "Sarah Thompson",
     content: "Hi Michael! Great question. Given the home's age, we may need a 4-point inspection (roof, electrical, plumbing, HVAC) to finalize the rate. I'll prepare a preliminary quote based on the listing details. Also, this property is not in a flood zone, so flood insurance won't be required by the lender — but I'd recommend it given Florida's weather.",
   });
+
+  // ── Seed Transaction Documents (auto-generated on offer acceptance) ──
+  const fullAddr = "725 15th Ave NE, St. Petersburg, FL 33704";
+  try {
+    const paUrl = generatePurchaseAgreement({ buyerName: buyerName, sellerName: sellerName, propertyAddress: fullAddr, purchasePrice: salePrice, closingDate: closingDateDemo, contingencies: ["Inspection", "Financing", "Appraisal"] });
+    const sdUrl = generateSellerDisclosure({ sellerName, propertyAddress: fullAddr, yearBuilt: 1925 });
+    const cdUrl = generateClosingDisclosure({ buyerName: buyerName, sellerName: sellerName, propertyAddress: fullAddr, purchasePrice: salePrice, platformFee: Math.round(salePrice * 0.01), closingDate: closingDateDemo });
+    const radonUrl = generateRadonDisclosure({ sellerName, buyerName: buyerName, propertyAddress: fullAddr });
+    const floodUrl = generateFloodZoneDisclosure({ sellerName, buyerName: buyerName, propertyAddress: fullAddr });
+    const leadUrl = generateLeadPaintDisclosure({ buyerName: buyerName, sellerName, propertyAddress: fullAddr, yearBuilt: 1925 });
+    const walkUrl = generateFinalWalkthroughChecklist({ buyerName: buyerName, propertyAddress: fullAddr, scheduledDate: closingDateDemo });
+    const csUrl = generateClosingStatement({ buyerName: buyerName, sellerName, propertyAddress: fullAddr, purchasePrice: salePrice, loanAmount: salePrice * 0.8, closingDate: closingDateDemo });
+    const deedUrl = generateDeed({ grantorName: sellerName, granteeName: buyerName, propertyAddress: fullAddr, county: "Pinellas", purchasePrice: salePrice });
+    const insUrl = generateInsuranceBinder({ buyerName: buyerName, propertyAddress: fullAddr, purchasePrice: salePrice, effectiveDate: closingDateDemo });
+
+    const demoDocTypes = [
+      { type: "contract", name: "Purchase Agreement", status: "draft", content: paUrl, signedByBuyer: true, signedBySeller: true },
+      { type: "disclosure", name: "Seller's Property Disclosure", status: "draft", content: sdUrl, signedByBuyer: false, signedBySeller: true },
+      { type: "disclosure", name: "Radon Disclosure Notice", status: "draft", content: radonUrl, signedByBuyer: true, signedBySeller: true },
+      { type: "disclosure", name: "Flood Zone Disclosure", status: "draft", content: floodUrl, signedByBuyer: true, signedBySeller: true },
+      { type: "disclosure", name: "Lead-Based Paint Disclosure", status: "draft", content: leadUrl, signedByBuyer: false, signedBySeller: false },
+      { type: "title", name: "Title Search Report", status: "pending_review", content: null },
+      { type: "inspection", name: "Home Inspection Report", status: "uploaded", content: null },
+      { type: "closing", name: "Closing Disclosure (CD)", status: "draft", content: cdUrl, signedByBuyer: false, signedBySeller: false },
+      { type: "closing", name: "Closing Statement", status: "draft", content: csUrl },
+      { type: "closing", name: "Warranty Deed", status: "draft", content: deedUrl },
+      { type: "closing", name: "Final Walkthrough Checklist", status: "draft", content: walkUrl },
+      { type: "closing", name: "Insurance Binder Request", status: "draft", content: insUrl },
+    ];
+    demoDocTypes.forEach(d => {
+      storage.createDocument({ listingId: 3, offerId: 1, type: d.type, name: d.name, status: d.status, content: d.content, signedByBuyer: (d as any).signedByBuyer || false, signedBySeller: (d as any).signedBySeller || false });
+    });
+    console.log("[Seed] Generated 12 transaction documents");
+  } catch (err) {
+    console.error("[Seed] Document generation error:", err);
+  }
+
+  // ── Seed Questionnaire Responses (pre-filled buyer/seller data) ──
+  if (storage.createQuestionnaireResponse) {
+    // Buyer questionnaire responses
+    storage.createQuestionnaireResponse({
+      transactionId: txn.id,
+      userId: buyer1.id,
+      role: "buyer",
+      responses: JSON.stringify({
+        buyerAddress: "4521 Gulf Blvd, St. Pete Beach, FL 33706",
+        personalPropertyIncluded: "Refrigerator, washer, dryer, and patio furniture",
+        occupancyDate: closingDateDemo,
+        vestingType: "Sole ownership",
+        lenderName: "First Federal Mortgage",
+        loanAmount: salePrice * 0.8,
+        interestRate: 6.875,
+        termYears: 30,
+        monthlyPayment: 2942,
+        firstPaymentDate: (() => { const d = new Date(closingDateDemo); d.setDate(1); d.setMonth(d.getMonth() + 2); return d.toISOString().split("T")[0]; })(),
+        buyerWaivesInspection: false,
+      }),
+      completedSections: JSON.stringify(["parties", "financial", "timeline", "buyer_options"]),
+    });
+
+    // Seller questionnaire responses
+    storage.createQuestionnaireResponse({
+      transactionId: txn.id,
+      userId: seller2.id,
+      role: "seller",
+      responses: JSON.stringify({
+        sellerAddress: "1200 Main St, Tampa, FL 33607",
+        legalDescription: "Lot 15, Block 3, OLD NORTHEAST SUBDIVISION, according to map or plat thereof recorded in Plat Book 9, Page 45, Public Records of Pinellas County, Florida",
+        parcelId: "24-31-16-12345-003-0150",
+        roofAge: 8,
+        roofMaterial: "Asphalt Shingle",
+        foundationIssues: true,
+        roofLeaks: false,
+        waterIntrusion: false,
+        previousRepairs: true,
+        repairDetails: "Foundation hairline crack repaired in 2019 by ABC Foundation Repair. Lifetime transferable warranty.",
+        hvacAge: 6,
+        hvacIssues: false,
+        plumbingIssues: false,
+        plumbingType: "Copper",
+        electricalIssues: true,
+        waterHeaterAge: 4,
+        knownAsbestos: false,
+        knownLeadPaint: false,
+        knownMold: false,
+        undergroundTanks: false,
+        sinkholeActivity: false,
+        floodDamage: false,
+        pendingLawsuits: false,
+        hoaViolations: false,
+        easements: false,
+        zoningViolations: false,
+        additionalDisclosures: "Electrical panel has double-tapped breakers noted in previous inspection. Quote obtained for repair: $1,650.",
+        maritalStatus: "Divorced",
+        mortgagePayoff: 185000,
+      }),
+      completedSections: JSON.stringify(["parties", "property", "structural", "mechanical", "environmental", "legal", "financial"]),
+    });
+    console.log("[Seed] Created buyer and seller questionnaire responses");
+  }
 }
 
 // Portal AI response generator (rule-based with OpenAI fallback)
@@ -2383,12 +2484,15 @@ export function registerRoutes(server: Server, app: Express) {
 
       const role = user.id === txn.buyerId ? "buyer" : "seller";
 
+      // Encrypt sensitive fields before storage
+      const encryptedResponses = encryptObject(responses || {});
+
       // Merge with existing responses
       const existing = storage.getQuestionnaireResponses?.(txnId, user.id);
-      let mergedResponses = responses || {};
+      let mergedResponses = encryptedResponses;
       if (existing) {
         const prev = JSON.parse(existing.responses || "{}");
-        mergedResponses = { ...prev, ...responses };
+        mergedResponses = { ...prev, ...encryptedResponses };
       }
 
       // Save (create or update)
