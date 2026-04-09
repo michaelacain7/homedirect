@@ -1,10 +1,10 @@
-import { pgTable, serial, text, integer, doublePrecision, boolean } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ── Users ───────────────────────────────────────────────────────────────
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   fullName: text("full_name").notNull(),
@@ -13,7 +13,7 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   bio: text("bio"),
   location: text("location"),
-  isVerified: boolean("is_verified").default(false),
+  isVerified: integer("is_verified", { mode: "boolean" }).default(false),
   createdAt: text("created_at").notNull().default(""),
 });
 
@@ -22,8 +22,8 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
 // ── Listings ────────────────────────────────────────────────────────────
-export const listings = pgTable("listings", {
-  id: serial("id").primaryKey(),
+export const listings = sqliteTable("listings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   sellerId: integer("seller_id").notNull(),
   title: text("title").notNull(),
   description: text("description").notNull(),
@@ -31,21 +31,21 @@ export const listings = pgTable("listings", {
   city: text("city").notNull(),
   state: text("state").notNull(),
   zip: text("zip").notNull(),
-  price: doublePrecision("price").notNull(),
+  price: real("price").notNull(),
   bedrooms: integer("bedrooms").notNull(),
-  bathrooms: doublePrecision("bathrooms").notNull(),
+  bathrooms: real("bathrooms").notNull(),
   sqft: integer("sqft").notNull(),
-  lotSize: doublePrecision("lot_size"),
+  lotSize: real("lot_size"),
   yearBuilt: integer("year_built"),
   propertyType: text("property_type").notNull().default("single_family"), // single_family | condo | townhouse | multi_family
   status: text("status").notNull().default("active"), // active | pending | sold | withdrawn
   images: text("images").notNull().default("[]"), // JSON array of image URLs
   features: text("features").notNull().default("[]"), // JSON array of feature strings
-  latitude: doublePrecision("latitude"),
-  longitude: doublePrecision("longitude"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
   mlsNumber: text("mls_number"),
-  hoaFee: doublePrecision("hoa_fee"),
-  taxAmount: doublePrecision("tax_amount"),
+  hoaFee: real("hoa_fee"),
+  taxAmount: real("tax_amount"),
   createdAt: text("created_at").notNull().default(""),
 });
 
@@ -54,23 +54,23 @@ export type InsertListing = z.infer<typeof insertListingSchema>;
 export type Listing = typeof listings.$inferSelect;
 
 // ── Offers ──────────────────────────────────────────────────────────────
-export const offers = pgTable("offers", {
-  id: serial("id").primaryKey(),
+export const offers = sqliteTable("offers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   listingId: integer("listing_id").notNull(),
   buyerId: integer("buyer_id").notNull(),
-  amount: doublePrecision("amount").notNull(),
+  amount: real("amount").notNull(),
   status: text("status").notNull().default("pending"), // pending | countered | accepted | rejected | withdrawn
   message: text("message"),
   contingencies: text("contingencies").notNull().default("[]"), // JSON array
   closingDate: text("closing_date"),
-  counterAmount: doublePrecision("counter_amount"),
+  counterAmount: real("counter_amount"),
   counterMessage: text("counter_message"),
   // Enhanced offer fields
   financingType: text("financing_type").default("conventional"), // cash | conventional | fha | va
-  downPaymentPercent: doublePrecision("down_payment_percent"),
-  earnestMoney: doublePrecision("earnest_money"),
+  downPaymentPercent: real("down_payment_percent"),
+  earnestMoney: real("earnest_money"),
   closingDays: integer("closing_days").default(30),
-  escalationMax: doublePrecision("escalation_max"),
+  escalationMax: real("escalation_max"),
   createdAt: text("created_at").notNull().default(""),
 });
 
@@ -79,15 +79,15 @@ export type InsertOffer = z.infer<typeof insertOfferSchema>;
 export type Offer = typeof offers.$inferSelect;
 
 // ── Walkthroughs ────────────────────────────────────────────────────────
-export const walkthroughs = pgTable("walkthroughs", {
-  id: serial("id").primaryKey(),
+export const walkthroughs = sqliteTable("walkthroughs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   listingId: integer("listing_id").notNull(),
   buyerId: integer("buyer_id").notNull(),
   chaperoneId: integer("chaperone_id"),
   scheduledDate: text("scheduled_date").notNull(),
   scheduledTime: text("scheduled_time").notNull(),
   status: text("status").notNull().default("requested"), // requested | assigned | confirmed | completed | cancelled
-  chaperonePayment: doublePrecision("chaperone_payment").notNull().default(20),
+  chaperonePayment: real("chaperone_payment").notNull().default(20),
   buyerNotes: text("buyer_notes"),
   chaperoneNotes: text("chaperone_notes"),
   createdAt: text("created_at").notNull().default(""),
@@ -98,16 +98,16 @@ export type InsertWalkthrough = z.infer<typeof insertWalkthroughSchema>;
 export type Walkthrough = typeof walkthroughs.$inferSelect;
 
 // ── Documents ───────────────────────────────────────────────────────────
-export const documents = pgTable("documents", {
-  id: serial("id").primaryKey(),
+export const documents = sqliteTable("documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   listingId: integer("listing_id").notNull(),
   offerId: integer("offer_id"),
   type: text("type").notNull(), // disclosure | title | contract | inspection | appraisal | closing
   name: text("name").notNull(),
   status: text("status").notNull().default("draft"), // draft | pending_review | signed | completed
   content: text("content"), // JSON content for form-based docs
-  signedByBuyer: boolean("signed_by_buyer").default(false),
-  signedBySeller: boolean("signed_by_seller").default(false),
+  signedByBuyer: integer("signed_by_buyer", { mode: "boolean" }).default(false),
+  signedBySeller: integer("signed_by_seller", { mode: "boolean" }).default(false),
   createdAt: text("created_at").notNull().default(""),
 });
 
@@ -116,8 +116,8 @@ export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type Document = typeof documents.$inferSelect;
 
 // ── Messages (AI negotiation chat) ──────────────────────────────────────
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
+export const messages = sqliteTable("messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   offerId: integer("offer_id").notNull(),
   senderId: integer("sender_id"), // null for AI messages
   senderType: text("sender_type").notNull().default("user"), // user | ai
@@ -130,14 +130,14 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Message = typeof messages.$inferSelect;
 
 // ── Transactions ────────────────────────────────────────────────────────
-export const transactions = pgTable("transactions", {
-  id: serial("id").primaryKey(),
+export const transactions = sqliteTable("transactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   listingId: integer("listing_id").notNull(),
   offerId: integer("offer_id").notNull(),
   buyerId: integer("buyer_id").notNull(),
   sellerId: integer("seller_id").notNull(),
-  salePrice: doublePrecision("sale_price").notNull(),
-  platformFee: doublePrecision("platform_fee").notNull(), // 1% of sale price
+  salePrice: real("sale_price").notNull(),
+  platformFee: real("platform_fee").notNull(), // 1% of sale price
   status: text("status").notNull().default("in_progress"), // in_progress | closing | completed | cancelled
   closingDate: text("closing_date"),
   escrowStatus: text("escrow_status").default("not_started"), // not_started | opened | funded | disbursed
@@ -152,8 +152,8 @@ export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
 
 // ── Saved Searches ──────────────────────────────────────────────────────
-export const savedSearches = pgTable("saved_searches", {
-  id: serial("id").primaryKey(),
+export const savedSearches = sqliteTable("saved_searches", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
   name: text("name").notNull(),
   filters: text("filters").notNull().default("{}"), // JSON search criteria
@@ -165,8 +165,8 @@ export type InsertSavedSearch = z.infer<typeof insertSavedSearchSchema>;
 export type SavedSearch = typeof savedSearches.$inferSelect;
 
 // ── Favorites ───────────────────────────────────────────────────────────
-export const favorites = pgTable("favorites", {
-  id: serial("id").primaryKey(),
+export const favorites = sqliteTable("favorites", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
   listingId: integer("listing_id").notNull(),
   createdAt: text("created_at").notNull().default(""),
@@ -177,8 +177,8 @@ export type InsertFavorite = z.infer<typeof insertFavoriteSchema>;
 export type Favorite = typeof favorites.$inferSelect;
 
 // ── Chaperone Applications ──────────────────────────────────────────
-export const chaperoneApplications = pgTable("chaperone_applications", {
-  id: serial("id").primaryKey(),
+export const chaperoneApplications = sqliteTable("chaperone_applications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
   status: text("status").notNull().default("pending"), // pending | background_check | approved | rejected
   firstName: text("first_name").notNull(),
@@ -189,15 +189,15 @@ export const chaperoneApplications = pgTable("chaperone_applications", {
   city: text("city").notNull(),
   state: text("state").notNull(),
   zip: text("zip").notNull(),
-  latitude: doublePrecision("latitude"),
-  longitude: doublePrecision("longitude"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
   dateOfBirth: text("date_of_birth").notNull(),
   ssn: text("ssn").notNull(), // bcrypt hash of full SSN
   ssnLast4: text("ssn_last4"), // last 4 digits for display only
   driversLicense: text("drivers_license").notNull(),
-  hasRealtorLicense: boolean("has_realtor_license").default(false),
+  hasRealtorLicense: integer("has_realtor_license", { mode: "boolean" }).default(false),
   realtorLicenseNumber: text("realtor_license_number"),
-  hasVehicle: boolean("has_vehicle").default(false),
+  hasVehicle: integer("has_vehicle", { mode: "boolean" }).default(false),
   maxTravelMiles: integer("max_travel_miles").default(15),
   availability: text("availability").notNull().default("[]"), // JSON: ["weekdays","weekends","evenings"]
   backgroundCheckStatus: text("background_check_status").default("not_started"), // not_started | processing | passed | failed
@@ -207,9 +207,9 @@ export const chaperoneApplications = pgTable("chaperone_applications", {
   bankAccountNumber: text("bank_account_number"), // bcrypt hash of full account number
   accountNumberLast4: text("account_number_last4"), // last 4 digits for display
   bankAccountType: text("bank_account_type").default("checking"), // checking | savings
-  agreedToTerms: boolean("agreed_to_terms").default(false),
+  agreedToTerms: integer("agreed_to_terms", { mode: "boolean" }).default(false),
   agreedToTermsDate: text("agreed_to_terms_date"),
-  completedTraining: boolean("completed_training").default(false),
+  completedTraining: integer("completed_training", { mode: "boolean" }).default(false),
   createdAt: text("created_at").notNull().default(""),
 });
 
@@ -218,11 +218,11 @@ export type InsertChaperoneApplication = z.infer<typeof insertChaperoneApplicati
 export type ChaperoneApplication = typeof chaperoneApplications.$inferSelect;
 
 // ── Chaperone Payouts ──────────────────────────────────────────────
-export const chaperonePayouts = pgTable("chaperone_payouts", {
-  id: serial("id").primaryKey(),
+export const chaperonePayouts = sqliteTable("chaperone_payouts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   chaperoneId: integer("chaperone_id").notNull(),
   walkthroughId: integer("walkthrough_id"), // null for manual payouts
-  amount: doublePrecision("amount").notNull(),
+  amount: real("amount").notNull(),
   type: text("type").notNull().default("earning"), // earning | payout | bonus
   status: text("status").notNull().default("pending"), // pending | processing | completed | failed
   description: text("description").notNull(),
@@ -235,8 +235,8 @@ export type InsertChaperonePayout = z.infer<typeof insertChaperonePayoutSchema>;
 export type ChaperonePayout = typeof chaperonePayouts.$inferSelect;
 
 // ── Payments ────────────────────────────────────────────────────────────
-export const payments = pgTable("payments", {
-  id: serial("id").primaryKey(),
+export const payments = sqliteTable("payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
   amount: text("amount").notNull(), // e.g. "20.00"
   type: text("type").notNull(), // "walkthrough_fee", "platform_fee", "chaperone_payout"
@@ -251,8 +251,8 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type Payment = typeof payments.$inferSelect;
 
 // ── Notifications ────────────────────────────────────────────────────────────
-export const notifications = pgTable("notifications", {
-  id: serial("id").primaryKey(),
+export const notifications = sqliteTable("notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("user_id").notNull(),
   type: text("type").notNull(), // "offer_received", "offer_accepted", "walkthrough_scheduled", etc.
   title: text("title").notNull(),
@@ -267,8 +267,8 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 
 // ── Transaction Checklist ────────────────────────────────────────────────
-export const transactionChecklist = pgTable("transaction_checklist", {
-  id: serial("id").primaryKey(),
+export const transactionChecklist = sqliteTable("transaction_checklist", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   transactionId: integer("transaction_id").notNull(),
   role: text("role").notNull(), // "buyer" or "seller"
   title: text("title").notNull(),
@@ -285,8 +285,8 @@ export type InsertTransactionChecklist = z.infer<typeof insertTransactionCheckli
 export type TransactionChecklist = typeof transactionChecklist.$inferSelect;
 
 // ── Portal Messages ──────────────────────────────────────────────────────
-export const portalMessages = pgTable("portal_messages", {
-  id: serial("id").primaryKey(),
+export const portalMessages = sqliteTable("portal_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   transactionId: integer("transaction_id").notNull(),
   portal: text("portal").notNull(), // "inspection", "escrow", "lender", "appraisal", "title", "general"
   userId: integer("user_id").notNull(),
@@ -300,8 +300,8 @@ export type InsertPortalMessage = z.infer<typeof insertPortalMessageSchema>;
 export type PortalMessage = typeof portalMessages.$inferSelect;
 
 // ── Portal Documents ─────────────────────────────────────────────────────
-export const portalDocuments = pgTable("portal_documents", {
-  id: serial("id").primaryKey(),
+export const portalDocuments = sqliteTable("portal_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   transactionId: integer("transaction_id").notNull(),
   portal: text("portal").notNull(),
   name: text("name").notNull(),
@@ -317,8 +317,8 @@ export type InsertPortalDocument = z.infer<typeof insertPortalDocumentSchema>;
 export type PortalDocument = typeof portalDocuments.$inferSelect;
 
 // ── Repair Requests ──────────────────────────────────────────────────────
-export const repairRequests = pgTable("repair_requests", {
-  id: serial("id").primaryKey(),
+export const repairRequests = sqliteTable("repair_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   transactionId: integer("transaction_id").notNull(),
   status: text("status").notNull().default("pending"), // pending | responded | accepted | countered
   buyerItems: text("buyer_items").notNull(), // JSON array of { finding, type, estimatedCost }
@@ -334,8 +334,8 @@ export type InsertRepairRequest = z.infer<typeof insertRepairRequestSchema>;
 export type RepairRequest = typeof repairRequests.$inferSelect;
 
 // ── Professional Access ──────────────────────────────────────────────────────
-export const professionalAccess = pgTable("professional_access", {
-  id: serial("id").primaryKey(),
+export const professionalAccess = sqliteTable("professional_access", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   transactionId: integer("transaction_id").notNull(),
   listingId: integer("listing_id"),
   type: text("type").notNull(), // "inspector", "appraiser", "lender", "title", "photographer"
@@ -354,8 +354,8 @@ export type InsertProfessionalAccess = z.infer<typeof insertProfessionalAccessSc
 export type ProfessionalAccess = typeof professionalAccess.$inferSelect;
 
 // ── Professional Messages ────────────────────────────────────────────────────
-export const professionalMessages = pgTable("professional_messages", {
-  id: serial("id").primaryKey(),
+export const professionalMessages = sqliteTable("professional_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   professionalAccessId: integer("professional_access_id").notNull(),
   senderType: text("sender_type").notNull(), // "professional", "buyer", "seller", "system"
   senderName: text("sender_name").notNull(),
@@ -370,8 +370,8 @@ export type InsertProfessionalMessage = z.infer<typeof insertProfessionalMessage
 export type ProfessionalMessage = typeof professionalMessages.$inferSelect;
 
 // ── Professional Documents ───────────────────────────────────────────────────
-export const professionalDocuments = pgTable("professional_documents", {
-  id: serial("id").primaryKey(),
+export const professionalDocuments = sqliteTable("professional_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   professionalAccessId: integer("professional_access_id").notNull(),
   transactionId: integer("transaction_id").notNull(),
   type: text("type").notNull(), // "inspection_report", "appraisal_report", "loan_estimate", "closing_disclosure", "title_commitment", "photos"
@@ -388,8 +388,8 @@ export type InsertProfessionalDocument = z.infer<typeof insertProfessionalDocume
 export type ProfessionalDocument = typeof professionalDocuments.$inferSelect;
 
 // ── Questionnaire Responses (buyer/seller form data for document filling) ────
-export const questionnaireResponses = pgTable("questionnaire_responses", {
-  id: serial("id").primaryKey(),
+export const questionnaireResponses = sqliteTable("questionnaire_responses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   transactionId: integer("transaction_id").notNull(),
   userId: integer("user_id").notNull(),
   role: text("role").notNull(), // "buyer" | "seller"
