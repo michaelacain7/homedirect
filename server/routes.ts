@@ -13,6 +13,7 @@ import { runAgent, type AgentContext } from "./ai-agent";
 import { runEvalSuite, getEvalCases, getEvalCasesByCategory } from "./ai-eval";
 import { toolDefinitions } from "./ai-tools";
 import { getDocumentSummary, sendDocumentsForSigning, buildTransactionContext, getCurrentStage, getDocumentsForRole, getFullDocumentPlan, DOCUMENT_REGISTRY } from "./document-orchestrator";
+import { fillDocument, generateFullQuestionnaire, getConfiguredDocuments, isDocumentReady } from "./document-filler";
 import { isDocuSignConfigured, getEnvelopeStatus, getSigningUrl } from "./docusign";
 import { searchMLSListings } from "./mls-api";
 import { z } from "zod";
@@ -2338,6 +2339,108 @@ export function registerRoutes(server: Server, app: Express) {
     } catch (error: any) {
       console.error("DocuSign webhook error:", error);
       res.status(200).json({ received: true }); // Always return 200 to DocuSign
+    }
+  });
+
+  // ========== QUESTIONNAIRE (Document Data Collection) ==========
+
+  // Get questionnaire for a transaction — what info is still needed
+  app.get("/api/transactions/:id/questionnaire", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const user = req.user as any;
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const role = user.id === txn.buyerId ? "buyer" : "seller";
+
+      // Get existing responses
+      const existing = storage.getQuestionnaireResponses?.(txnId, user.id);
+      const responses = existing ? JSON.parse(existing.responses || "{}") : {};
+
+      const questionnaire = generateFullQuestionnaire(txnId, role as "buyer" | "seller", responses);
+
+      res.json({
+        role,
+        ...questionnaire,
+        existingResponses: responses,
+        isComplete: questionnaire.totalQuestions === 0,
+      });
+    } catch (error: any) {
+      console.error("Questionnaire error:", error);
+      res.status(500).json({ message: "Failed to get questionnaire" });
+    }
+  });
+
+  // Submit questionnaire responses
+  app.post("/api/transactions/:id/questionnaire", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const user = req.user as any;
+      const { responses, completedSections } = req.body;
+      const txn = storage.getTransaction(txnId);
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const role = user.id === txn.buyerId ? "buyer" : "seller";
+
+      // Merge with existing responses
+      const existing = storage.getQuestionnaireResponses?.(txnId, user.id);
+      let mergedResponses = responses || {};
+      if (existing) {
+        const prev = JSON.parse(existing.responses || "{}");
+        mergedResponses = { ...prev, ...responses };
+      }
+
+      // Save (create or update)
+      if (existing && storage.updateQuestionnaireResponse) {
+        storage.updateQuestionnaireResponse(existing.id, {
+          responses: JSON.stringify(mergedResponses),
+          completedSections: JSON.stringify(completedSections || []),
+          updatedAt: new Date().toISOString(),
+        });
+      } else if (storage.createQuestionnaireResponse) {
+        storage.createQuestionnaireResponse({
+          transactionId: txnId,
+          userId: user.id,
+          role,
+          responses: JSON.stringify(mergedResponses),
+          completedSections: JSON.stringify(completedSections || []),
+        });
+      }
+
+      // Check what documents are now ready to generate
+      const readyDocs = getConfiguredDocuments().filter(docName =>
+        isDocumentReady(docName, txnId, mergedResponses)
+      );
+
+      res.json({
+        saved: true,
+        totalResponses: Object.keys(mergedResponses).length,
+        readyDocuments: readyDocs,
+        message: readyDocs.length > 0
+          ? `${readyDocs.length} document(s) now have all required information and can be generated.`
+          : "Responses saved. Some documents still need additional information.",
+      });
+    } catch (error: any) {
+      console.error("Questionnaire submit error:", error);
+      res.status(500).json({ message: "Failed to save questionnaire responses" });
+    }
+  });
+
+  // Preview filled document data (what fields are populated, what's missing)
+  app.get("/api/transactions/:id/document-fill/:documentName", requireAuth, (req, res) => {
+    try {
+      const txnId = parseInt(req.params.id);
+      const docName = decodeURIComponent(req.params.documentName);
+      const user = req.user as any;
+
+      const existing = storage.getQuestionnaireResponses?.(txnId, user.id);
+      const responses = existing ? JSON.parse(existing.responses || "{}") : {};
+
+      const result = fillDocument(docName, txnId, responses);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to preview document fill" });
     }
   });
 

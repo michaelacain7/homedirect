@@ -307,6 +307,36 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "check_document_readiness",
+      description: "Check if a document has all required data to be filled out and sent for signing. Shows what's complete and what info is still needed from the buyer or seller. Use when managing the transaction paperwork.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+          documentName: { type: "string", description: "Name of the document to check" },
+        },
+        required: ["transactionId", "documentName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_missing_information",
+      description: "Get the list of questions that still need to be answered by the buyer or seller before documents can be completed. Use when you need to collect information from the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          transactionId: { type: "number", description: "The transaction ID" },
+          role: { type: "string", enum: ["buyer", "seller"], description: "Which party to get questions for" },
+        },
+        required: ["transactionId", "role"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "send_documents_for_signing",
       description: "Send specific documents to buyer and/or seller for e-signature via DocuSign. REQUIRES USER CONFIRMATION.",
       parameters: {
@@ -599,6 +629,38 @@ export async function executeTool(
         suggestedCounter: suggested,
         closingCostCredit: credit,
         script: `Counter-offer at $${suggested.toLocaleString()}${credit > 0 ? ` with $${credit.toLocaleString()} closing cost credit` : ""}.`,
+      });
+    }
+
+    case "check_document_readiness": {
+      const { fillDocument } = await import("./document-filler");
+      const result = fillDocument(args.documentName, args.transactionId);
+      return JSON.stringify({
+        documentName: result.documentName,
+        completionPercent: result.completionPercent,
+        filledFields: Object.keys(result.fields).length,
+        missingFields: result.missingFields.map(f => ({ key: f.key, label: f.label, helpText: f.helpText })),
+        isReady: result.missingFields.length === 0,
+        message: result.missingFields.length === 0
+          ? `${result.documentName} is ready to be generated and sent for signing.`
+          : `${result.documentName} needs ${result.missingFields.length} more piece(s) of information: ${result.missingFields.map(f => f.label).join(", ")}.`,
+      });
+    }
+
+    case "get_missing_information": {
+      const { generateFullQuestionnaire } = await import("./document-filler");
+      const questionnaire = generateFullQuestionnaire(args.transactionId, args.role);
+      return JSON.stringify({
+        role: args.role,
+        totalQuestions: questionnaire.totalQuestions,
+        categories: Object.fromEntries(
+          Object.entries(questionnaire.categories).map(([cat, questions]) => [
+            cat, questions.map(q => ({ key: q.key, label: q.label, type: q.type, options: q.options, helpText: q.helpText }))
+          ])
+        ),
+        message: questionnaire.totalQuestions === 0
+          ? `All information has been collected from the ${args.role}. Documents are ready.`
+          : `The ${args.role} still needs to provide ${questionnaire.totalQuestions} piece(s) of information across ${Object.keys(questionnaire.categories).length} categories.`,
       });
     }
 

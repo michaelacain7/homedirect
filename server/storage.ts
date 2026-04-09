@@ -986,6 +986,33 @@ export class DatabaseStorage implements IStorage {
       totalPayouts,
     };
   }
+  // ── Questionnaire Responses ──
+  getQuestionnaireResponses(transactionId: number, userId: number): any {
+    try {
+      const { questionnaireResponses } = require("@shared/schema");
+      return db.select().from(questionnaireResponses)
+        .where(and(eq(questionnaireResponses.transactionId, transactionId), eq(questionnaireResponses.userId, userId)))
+        .get();
+    } catch { return undefined; }
+  }
+
+  createQuestionnaireResponse(data: any): any {
+    try {
+      const { questionnaireResponses } = require("@shared/schema");
+      return db.insert(questionnaireResponses)
+        .values({ ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+        .returning().get();
+    } catch (e) { console.error("[Storage] createQuestionnaireResponse error:", e); return undefined; }
+  }
+
+  updateQuestionnaireResponse(id: number, data: any): any {
+    try {
+      const { questionnaireResponses } = require("@shared/schema");
+      return db.update(questionnaireResponses).set(data)
+        .where(eq(questionnaireResponses.id, id))
+        .returning().get();
+    } catch (e) { console.error("[Storage] updateQuestionnaireResponse error:", e); return undefined; }
+  }
 }
 
 export const storage = new DatabaseStorage();
