@@ -55,7 +55,9 @@ export function AIAdvisor() {
       const name = user?.fullName?.split(" ")[0];
       setMessages([{
         role: "assistant",
-        content: `Hey${name ? ` ${name}` : ""}! I'm your AI Real Estate Agent — I can search listings, calculate costs, draft offers, analyze deals, and guide you through the entire buying or selling process. What can I help with?`,
+        content: user?.role === "seller"
+          ? `Hey${name ? ` ${name}` : ""}! I'm your **Seller's Agent** — I work exclusively for you. I'll help you price your home, evaluate offers, negotiate to maximize your proceeds, handle disclosures, and guide you through closing. Your interests come first. What can I help with?`
+          : `Hey${name ? ` ${name}` : ""}! I'm your **Buyer's Agent** — I work exclusively for you. I'll help you find the right home, analyze deals, negotiate the best price, and protect your interests through closing. I'll make sure you don't overpay. What can I help with?`,
         timestamp: new Date(),
       }]);
       setHasGreeted(true);
@@ -201,7 +203,7 @@ export function AIAdvisor() {
                 <Home className="h-5 w-5" />
                 <Sparkles className="h-3 w-3 absolute -top-1 -right-1 text-yellow-300" />
               </div>
-              <span className="font-semibold text-sm whitespace-nowrap">AI Real Estate Agent</span>
+              <span className="font-semibold text-sm whitespace-nowrap">{user?.role === "seller" ? "Your Seller's Agent" : "Your Buyer's Agent"}</span>
             </div>
           </div>
         </button>
@@ -220,9 +222,9 @@ export function AIAdvisor() {
                 <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-primary" />
               </div>
               <div>
-                <div className="font-semibold text-sm">AI Real Estate Agent</div>
+                <div className="font-semibold text-sm">{user?.role === "seller" ? "Seller's Agent" : "Buyer's Agent"}</div>
                 <div className="text-xs text-primary-foreground/70">
-                  {user ? `${user.role === "seller" ? "Seller" : "Buyer"} mode` : "AI-powered"} • Can take actions
+                  {user ? `Representing ${user.fullName?.split(" ")[0] || "you"}` : "AI-powered"} • Fiduciary duty to you
                 </div>
               </div>
             </div>

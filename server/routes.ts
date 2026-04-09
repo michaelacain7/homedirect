@@ -10,6 +10,8 @@ import { chat, chatStream, chatWithTools, chatWithConfidence, hasLLMProvider, ge
 import { getBaseKnowledge, getPortalKnowledge } from "./knowledge-base";
 import { getRelevantContext } from "./vector-store";
 import { runAgent, type AgentContext } from "./ai-agent";
+import { runBuyerAgent } from "./buyer-agent";
+import { runSellerAgent } from "./seller-agent";
 import { runEvalSuite, getEvalCases, getEvalCasesByCategory } from "./ai-eval";
 import { toolDefinitions } from "./ai-tools";
 import { getDocumentSummary, sendDocumentsForSigning, buildTransactionContext, getCurrentStage, getDocumentsForRole, getFullDocumentPlan, analyzeTransactionDocuments, DOCUMENT_REGISTRY } from "./document-orchestrator";
@@ -2797,7 +2799,7 @@ export function registerRoutes(server: Server, app: Express) {
     res.json(docs);
   });
 
-  // ========== AI AGENT (full agent loop with tool use) ==========
+  // ========== AI AGENTS (role-specific: buyer's agent or seller's agent) ==========
   app.post("/api/agent/chat", requireAuth, async (req, res) => {
     try {
       const { message, history, context } = req.body;
@@ -2814,7 +2816,19 @@ export function registerRoutes(server: Server, app: Express) {
         offerId: context?.offerId,
       };
 
-      const result = await runAgent(message, history || [], agentContext);
+      // Route to the correct agent based on user role
+      let result;
+      if (user.role === "seller") {
+        console.log(`[Agent] Routing ${user.fullName} to SELLER'S AGENT`);
+        result = await runSellerAgent(message, history || [], agentContext);
+      } else if (user.role === "buyer" || !user.role) {
+        console.log(`[Agent] Routing ${user.fullName} to BUYER'S AGENT`);
+        result = await runBuyerAgent(message, history || [], agentContext);
+      } else {
+        // Admin, chaperone, or unknown role — use the general agent
+        console.log(`[Agent] Routing ${user.fullName} (${user.role}) to GENERAL AGENT`);
+        result = await runAgent(message, history || [], agentContext);
+      }
 
       res.json({
         response: result.message,
@@ -2822,6 +2836,7 @@ export function registerRoutes(server: Server, app: Express) {
         pendingActions: result.pendingActions,
         confidence: result.confidence,
         escalate: result.escalate,
+        agentType: user.role === "seller" ? "seller_agent" : user.role === "buyer" ? "buyer_agent" : "general_agent",
       });
     } catch (error: any) {
       console.error("Agent chat error:", error);
