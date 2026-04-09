@@ -299,3 +299,177 @@ ${params.hoaFee && params.hoaFee > 0 ? `**Monthly HOA:** $${params.hoaFee}\n` : 
 
 Always use these specific numbers in your response. Provide concrete, specific negotiation advice tailored to this ${params.userRole}'s situation. Show the math when discussing money.`;
 }
+
+/**
+ * Returns detailed knowledge for special/advanced transaction scenarios.
+ */
+export function getAdvancedScenarioKnowledge(scenario: string): string {
+  const scenarios: Record<string, string> = {
+    short_sale: `## SHORT SALE GUIDANCE
+A short sale means the seller owes more on their mortgage than the home is worth. Key facts:
+- Bank/lender must approve the sale — this adds 60-120+ days to the timeline
+- Seller submits a hardship letter, financial documents, and a BPO (Broker Price Opinion) is ordered
+- The bank's loss mitigator reviews and either approves, counters, or denies
+- Buyer must be patient — multiple extensions are common
+- Title may have junior liens that need to be negotiated
+- Seller should request a deficiency waiver (bank forgives the difference)
+- Tax implications: forgiven debt may be taxable income (consult a CPA)
+- Florida Anti-Deficiency: Florida allows deficiency judgments, so the waiver matters
+- As a buyer: price is often below market, but timeline risk is real
+- Get pre-approved and be ready to wait — many buyers walk away, giving patient ones leverage`,
+
+    foreclosure: `## FORECLOSURE PURCHASE GUIDANCE
+Foreclosure properties come in two forms: REO (bank-owned, already foreclosed) and auction (courthouse steps).
+- REO: Bank has taken title. Listed through a real estate agent. Can inspect, can negotiate. Title insurance available.
+- Auction: Sold at courthouse. Cash only (typically). No inspection. No title insurance at purchase. You inherit all liens.
+- REO is safer for most buyers — you can do due diligence
+- Auction can offer deeper discounts but carries significant risk
+- Both are sold AS-IS with no seller disclosures
+- Title issues are common — always get a thorough title search
+- Florida foreclosure is judicial (court process), taking 6-12+ months
+- After auction: you may need to evict occupants (Florida eviction process)
+- Financing REO: most lenders will finance, but property must be habitable for FHA/VA`,
+
+    new_construction: `## NEW CONSTRUCTION GUIDANCE
+Buying new construction is fundamentally different from resale:
+- Builder uses their own contract (NOT FAR/BAR) — have an attorney review it
+- Deposits are typically higher (10-20%) and may be non-refundable after certain milestones
+- Construction timeline: 6-12 months typical, delays are common
+- Draw schedule: builder gets paid in stages as construction progresses
+- Structural warranty: 10 years (required in FL). Mechanical: 2 years. Finish: 1 year.
+- Final walkthrough punch list: document EVERYTHING — scratches, gaps, alignment, paint, grout
+- Builder may not negotiate price but will negotiate upgrades
+- Get an independent inspection BEFORE closing — don't rely on county inspections
+- Impact fees, utility hookups, and landscaping may be extra
+- HOA in new developments often has higher initial fees while amenities are built`,
+
+    investor: `## INVESTOR PURCHASE GUIDANCE
+Key metrics for rental property analysis in Florida:
+- Cap Rate = NOI / Purchase Price. Tampa Bay SFR: typically 2-4%. Multifamily: 4-7%.
+- Cash-on-Cash = Annual Cash Flow / Cash Invested. Target: 8%+ for worthwhile investment.
+- 1% Rule: Monthly rent should be ~1% of purchase price. Hard to achieve in FL metros.
+- GRM (Gross Rent Multiplier) = Price / Annual Gross Rent. Lower is better. FL SFR: 15-20.
+- Financing: Conventional investment loans require 15-25% down, higher rates (+0.5-0.75%)
+- Hard money: 12-18% rate, 1-3 year term, asset-based. For fix-and-flip only.
+- DSCR loans: Based on property income, not personal income. Popular for portfolio investors.
+- Insurance: Landlord/rental policy required (not homeowner's). Higher premiums.
+- Property management: 8-10% of gross rent. Factor this in even if self-managing.
+- Florida landlord-tenant law: Chapter 83. Security deposit rules, eviction process, maintenance obligations.`,
+
+    first_time_buyer: `## FIRST-TIME BUYER GUIDANCE
+Welcome to homebuying! Here's your complete roadmap:
+1. Check your credit score (680+ ideal, 580 minimum for FHA)
+2. Save for down payment: 3.5% FHA, 3% conventional, 0% VA/USDA
+3. Get pre-approved (NOT just pre-qualified) — this requires full document review
+4. Florida down payment assistance: Florida Housing Finance Corp offers up to $10,000
+5. Hometown Heroes program: up to 5% of first mortgage for eligible workers
+6. Don't make large purchases or change jobs during the process
+7. Budget for closing costs (2-5% of purchase price) ON TOP of down payment
+8. PMI (Private Mortgage Insurance): required if less than 20% down. Adds $100-300/month.
+9. Request the seller pay your closing costs (up to 3% for conventional, 6% for FHA)
+10. HomeDirectAI saves you $15,000-25,000 compared to traditional agents — that's money toward your down payment on your NEXT home`,
+
+    relocation: `## RELOCATION BUYER GUIDANCE
+Buying remotely requires extra planning:
+- Use video walkthroughs and our chaperone service for in-person tours
+- Research neighborhoods thoroughly: schools, crime, commute, flood zones
+- Consider renting for 3-6 months first to learn the area
+- Use a local lender who knows the Florida market
+- Florida has no state income tax — factor this into your budget comparison
+- Homestead exemption: apply by March 1 after establishing FL residency
+- Driver's license and vehicle registration: must be done within 30 days of establishing residency
+- Insurance: get quotes BEFORE making an offer — FL insurance is expensive and varies widely by location
+- Flood zone: check FEMA maps for any property before offering
+- HOA: review carefully — some restrict rentals, parking, pets, and exterior modifications`,
+  };
+
+  return scenarios[scenario] || `## ADVANCED TRANSACTION GUIDANCE
+This is a specialized transaction type. Key considerations:
+- Consult a Florida real estate attorney for complex legal aspects
+- Ensure proper title insurance coverage
+- Understand all contingencies and timelines
+- HomeDirectAI's AI agent will guide you through each step
+- Ask me specific questions about your situation for detailed guidance`;
+}
+
+/**
+ * Returns empathetic, supportive responses for stressful real estate situations.
+ */
+export function getEmotionalSupportKnowledge(situation: string): string {
+  const situations: Record<string, string> = {
+    deal_falling_through: `## EMOTIONAL SUPPORT — DEAL FALLING THROUGH
+I know this is incredibly disappointing. You've invested time, energy, and emotion into this home. Here's what I want you to know:
+- This happens more often than you'd think — roughly 20% of contracts fall through
+- The RIGHT home is still out there, and now you're more experienced and prepared
+- Your pre-approval is still valid, your earnest money is protected by your contingencies
+- Common reasons deals fall through: inspection issues, financing problems, appraisal gaps, cold feet
+- Next steps: Take a day to decompress. Then let's get back to searching — you know exactly what you want now.
+- Silver lining: many buyers find an even better home the second time around`,
+
+    lowball_offer_received: `## EMOTIONAL SUPPORT — LOWBALL OFFER
+Don't take a lowball offer personally — it's a negotiation tactic, not a reflection of your home's value.
+- Some buyers always start low to see if there's room to negotiate
+- Counter at or near your asking price with confidence, backed by your CMA data
+- Include a deadline (24-48 hours) to create urgency
+- If you've priced correctly based on comps, the data supports your price
+- A lowball offer is still better than no offer — it means someone is interested
+- Many lowball situations end up closing within 3-5% of asking after negotiation`,
+
+    inspection_nightmares: `## EMOTIONAL SUPPORT — BAD INSPECTION RESULTS
+Take a breath. Inspection reports always look worse than they are — they document EVERYTHING.
+- Inspectors are paid to find problems. A 50-page report is normal, even for good homes.
+- Categorize: Safety/structural (must fix) vs. maintenance (normal wear) vs. cosmetic (ignore)
+- Major items: roof, foundation, HVAC, electrical panel, plumbing main lines
+- Minor items: dripping faucets, missing caulk, weatherstripping — these are NOT deal-breakers
+- Your options: request repairs, request credit, renegotiate price, or walk away
+- Most inspection negotiations settle with a credit of 1-2% of purchase price
+- The inspection protects YOU — this is the system working correctly`,
+
+    appraisal_gap: `## EMOTIONAL SUPPORT — LOW APPRAISAL
+A low appraisal feels like a gut punch, but you have options:
+- This is more common than you think, especially in fast-moving markets
+- Option 1: Negotiate with the seller to reduce the price to appraised value
+- Option 2: Split the difference (you pay some cash above appraisal, seller reduces some)
+- Option 3: Challenge the appraisal — submit a Reconsideration of Value with 3 better comps
+- Option 4: Walk away using your appraisal contingency (earnest money protected)
+- The appraisal is one professional's opinion on one day — it's not absolute truth
+- If you love the home and can afford the gap, it may still be worth it long-term`,
+
+    bidding_war_lost: `## EMOTIONAL SUPPORT — LOST BIDDING WAR
+Losing a bidding war stings, especially when you fell in love with the house. But:
+- You made a smart decision not to overpay beyond your comfort zone
+- Overpaying creates risk: higher payments, potential negative equity, appraisal issues
+- The market always has new inventory — another great home will come along
+- Use this experience: next time, get your strongest offer in first (escalation clause, fewer contingencies if comfortable)
+- Sometimes the winning bidder's deal falls through — ask to be the backup offer
+- The home you end up buying is the one that was meant to be yours`,
+
+    closing_delay: `## EMOTIONAL SUPPORT — CLOSING DELAY
+Closing delays are frustrating but usually resolvable:
+- Common causes: lender underwriting delays, title issues, document corrections, appraisal scheduling
+- Most delays are 1-2 weeks, not deal-breaking
+- Your contract likely has extension provisions — use them
+- Stay in close communication with all parties (lender, title, other side)
+- If you have a lease ending or moving truck scheduled, contact your landlord/movers ASAP
+- Keep your cool — getting angry doesn't speed things up, but staying organized does
+- This is temporary. You WILL close. Focus on what you can control.`,
+
+    buyers_remorse: `## EMOTIONAL SUPPORT — BUYER'S REMORSE
+Feeling nervous after making the biggest purchase of your life is completely normal:
+- Studies show 50%+ of homebuyers experience some form of buyer's remorse
+- Ask yourself: did you do your research? Did you get an inspection? Is it within budget? If yes — you made a good decision.
+- The "what ifs" are natural but rarely productive
+- Remember why you chose THIS home — make a list of what you loved about it
+- Every homeowner has moments of doubt. It passes.
+- You can always refinance if rates drop, renovate over time, and build equity
+- You're building wealth instead of paying someone else's mortgage`,
+  };
+
+  return situations[situation] || `## SUPPORT & GUIDANCE
+Real estate transactions can be stressful — that's completely normal. Here's what I want you to know:
+- You're not alone. I'm here to guide you through every step.
+- Most challenges in real estate have solutions. Let's talk through yours.
+- Take it one step at a time. What's the most pressing concern right now?
+- HomeDirectAI is designed to make this process easier and save you money.`;
+}
+}
