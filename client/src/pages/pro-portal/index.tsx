@@ -97,6 +97,11 @@ export default function ProPortal({ token }: ProPortalProps) {
     retry: false,
   });
 
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">

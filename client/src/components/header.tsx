@@ -151,10 +151,6 @@ export function Header() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <Button size="icon" variant="ghost" onClick={toggleTheme} data-testid="button-theme-toggle">
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-
             {isAuthenticated && <NotificationBell />}
 
             {isAuthenticated ? (
