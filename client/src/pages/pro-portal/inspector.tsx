@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Home, Calendar, User, FileText, Plus, CheckCircle } from "lucide-react";
+import { Home, Calendar, User, FileText, Plus, CheckCircle, CheckCircle2, Bot } from "lucide-react";
 import type { PortalInfo } from "./index";
 import PortalChat from "./portal-chat";
 import PortalUpload from "./portal-upload";
@@ -176,108 +176,41 @@ export default function InspectorPortal({ token, portalInfo }: InspectorPortalPr
             </CardContent>
           </Card>
 
-          {/* Findings */}
+          {/* AI Analysis Notice */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <div className="flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-orange-600" />
-                  Inspection Findings
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowFindingForm(true)}
-                  className="text-xs"
-                >
-                  Add Finding
-                </Button>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bot className="w-4 h-4 text-primary" />
+                Automated Report Analysis
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Add Finding Form */}
-              {showFindingForm && (
-                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border space-y-3">
-                  <h4 className="font-medium text-sm text-gray-900 dark:text-white">New Finding</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Category</Label>
-                      <Select
-                        value={newFinding.category}
-                        onValueChange={(v) => setNewFinding(p => ({ ...p, category: v }))}
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Severity</Label>
-                      <Select
-                        value={newFinding.severity}
-                        onValueChange={(v) => setNewFinding(p => ({ ...p, severity: v }))}
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SEVERITIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Description</Label>
-                    <Textarea
-                      placeholder="Describe the issue..."
-                      value={newFinding.description}
-                      onChange={e => setNewFinding(p => ({ ...p, description: e.target.value }))}
-                      className="text-xs min-h-[70px]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Estimated Repair Cost (optional)</Label>
-                    <Input
-                      placeholder="e.g. $500 - $1,200"
-                      value={newFinding.estimatedCost}
-                      onChange={e => setNewFinding(p => ({ ...p, estimatedCost: e.target.value }))}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-xs" onClick={addFinding}>
-                      Add Finding
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => setShowFindingForm(false)}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Findings List */}
-              {findings.length === 0 && !showFindingForm && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                  No findings added yet. Click "Add Finding" to log issues.
+            <CardContent className="space-y-3">
+              <div className="p-4 bg-primary/5 rounded-xl border border-primary/10">
+                <p className="text-sm">
+                  When you upload the inspection report above, our AI will automatically:
                 </p>
-              )}
-              {findings.map((f, i) => (
-                <div key={i} className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{f.category}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${severityColor(f.severity)}`}>
-                      {f.severity}
-                    </span>
-                    {f.estimatedCost && (
-                      <span className="ml-auto text-xs text-gray-500">{f.estimatedCost}</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">{f.description}</p>
-                </div>
-              ))}
+                <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    Read through the entire report and extract all findings
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    Categorize each issue by severity (major, moderate, minor)
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    Estimate repair costs for each finding
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                    Generate recommendations for both buyer and seller
+                  </li>
+                </ul>
+                <p className="text-xs text-muted-foreground mt-3">
+                  No manual entry needed — just upload the PDF and the AI handles the rest.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>

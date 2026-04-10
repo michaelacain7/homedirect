@@ -84,8 +84,14 @@ const MOCK_ANALYSIS = {
     { title: "Downspout disconnected from gutter", cost: "$75", recommendation: "accept" },
     { title: "Smoke detector expired — kitchen", cost: "$25", recommendation: "accept" },
   ],
-  aiRecommendation: "Based on this report, I recommend requesting a $14,000 seller credit covering the major and key moderate items. The roof ($10,000) and electrical panel ($1,650) are the most urgent. The foundation crack needs a structural engineer evaluation first — if it's cosmetic, reduce the credit request accordingly.",
-  creditTotal: "$14,000",
+  aiRecommendation: {
+    buyer: "Based on this report, I recommend requesting a $14,000 seller credit covering the major and key moderate items. The roof ($10,000) and electrical panel ($1,650) are the most urgent. The foundation crack needs a structural engineer evaluation first — if it's cosmetic, reduce the credit request accordingly.",
+    seller: "Based on this report, here's my strategy to minimize your exposure: The roof and electrical panel are legitimate safety concerns — offer a $9,500 credit (below the $14,000 the buyer will likely request). Push back on the HVAC and water heater — they're functional, and age alone isn't a defect. The foundation crack appears cosmetic — offer to provide the existing repair warranty documentation instead of a credit. Total recommended concession: $9,500.",
+  },
+  creditTotal: {
+    buyer: "$14,000",
+    seller: "$9,500",
+  },
 };
 
 const STATUS_STEPS = ["Scheduled", "In Progress", "Report Received", "Review Complete"];
@@ -549,11 +555,11 @@ export default function PortalInspection() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="text-sm">{MOCK_ANALYSIS.aiRecommendation}</p>
+                  <p className="text-sm">{isBuyer ? MOCK_ANALYSIS.aiRecommendation.buyer : MOCK_ANALYSIS.aiRecommendation.seller}</p>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 p-3 rounded-xl bg-primary text-white text-center">
-                      <p className="text-xs opacity-80">Recommended Seller Credit</p>
-                      <p className="text-xl font-bold">{MOCK_ANALYSIS.creditTotal}</p>
+                      <p className="text-xs opacity-80">{isBuyer ? "Recommended Seller Credit" : "Recommended Concession"}</p>
+                      <p className="text-xl font-bold">{isBuyer ? MOCK_ANALYSIS.creditTotal.buyer : MOCK_ANALYSIS.creditTotal.seller}</p>
                     </div>
                     {isBuyer && (
                       <Button
