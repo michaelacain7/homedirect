@@ -399,6 +399,7 @@ export default function TransactionHub() {
   const queryClient = useQueryClient();
 
   const [showChecklist, setShowChecklist] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
 
   const { data: txn, isLoading } = useQuery<Transaction>({
     queryKey: ["/api/transactions", params?.id],
@@ -417,6 +418,14 @@ export default function TransactionHub() {
     queryKey: ["/api/transactions", params?.id, "checklist"],
     queryFn: () => apiRequest("GET", `/api/transactions/${params?.id}/checklist`).then((r) => r.json()),
     enabled: !!params?.id && !!user,
+  });
+
+  // Fetch transaction documents
+  type DocRecord = { id: number; name: string; type: string; status: string; content: string | null; signedByBuyer: boolean; signedBySeller: boolean };
+  const { data: documents = [] } = useQuery<DocRecord[]>({
+    queryKey: ["/api/documents/listing", txn?.listingId],
+    queryFn: () => apiRequest("GET", `/api/documents/listing/${txn?.listingId}`).then((r) => r.json()),
+    enabled: !!txn?.listingId,
   });
 
   const updateItem = useMutation({
@@ -640,6 +649,96 @@ export default function TransactionHub() {
         )}
         </div>}
       </div>
+
+      {/* Documents Section */}
+      {documents.length > 0 && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowDocuments(!showDocuments)}
+            className="w-full flex items-center justify-between p-4 rounded-xl border hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <FileText className="h-5 w-5 text-primary" />
+              <div className="text-left">
+                <h2 className="text-sm font-semibold">Transaction Documents</h2>
+                <p className="text-xs text-muted-foreground">
+                  {documents.filter(d => (isBuyer ? d.signedByBuyer : d.signedBySeller)).length} of {documents.length} signed
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                {documents.filter(d => !(isBuyer ? d.signedByBuyer : d.signedBySeller)).length} need signature
+              </Badge>
+              <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showDocuments ? "rotate-90" : ""}`} />
+            </div>
+          </button>
+          {showDocuments && (
+            <div className="mt-3 space-y-2">
+              {documents.map((doc) => {
+                const mySigned = isBuyer ? doc.signedByBuyer : doc.signedBySeller;
+                const otherSigned = isBuyer ? doc.signedBySeller : doc.signedByBuyer;
+                return (
+                  <div
+                    key={doc.id}
+                    className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                      mySigned ? "border-emerald-200 bg-emerald-50/50" : "border-amber-200 bg-amber-50/30"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <FileText className={`h-4 w-4 flex-shrink-0 ${mySigned ? "text-emerald-600" : "text-amber-600"}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{doc.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="outline" className="text-[9px]">{doc.type}</Badge>
+                          {mySigned ? (
+                            <span className="text-[10px] text-emerald-600 flex items-center gap-0.5">
+                              <CheckCircle2 className="h-3 w-3" /> You signed
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-amber-600">Needs your signature</span>
+                          )}
+                          {otherSigned && (
+                            <span className="text-[10px] text-emerald-600 flex items-center gap-0.5">
+                              <CheckCircle2 className="h-3 w-3" /> {isBuyer ? "Seller" : "Buyer"} signed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {doc.content && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => window.open(doc.content!, "_blank")}
+                        >
+                          View
+                        </Button>
+                      )}
+                      {!mySigned && (
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={async () => {
+                            try {
+                              await apiRequest("POST", `/api/documents/${doc.id}/sign`, { role: isBuyer ? "buyer" : "seller" });
+                              queryClient.invalidateQueries({ queryKey: ["/api/documents/listing", txn?.listingId] });
+                            } catch {}
+                          }}
+                        >
+                          Sign
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Portal Cards */}
       <div>
