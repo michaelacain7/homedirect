@@ -18,6 +18,7 @@ import ChaperoneApply from "@/pages/chaperone-apply";
 import ChaperoneDashboard from "@/pages/chaperone-dashboard";
 import TransactionPage from "@/pages/transaction";
 import TransactionHub from "@/pages/transaction-hub";
+import PreApproval from "@/pages/pre-approval";
 import PortalInspection from "@/pages/portal-inspection";
 import PortalEscrow from "@/pages/portal-escrow";
 import PortalLender from "@/pages/portal-lender";
@@ -40,6 +41,7 @@ function AppRouter() {
       <Route path="/map" component={MapSearch} />
       <Route path="/listing/:id" component={ListingDetail} />
       <Route path="/sell" component={Sell} />
+      <Route path="/pre-approval" component={PreApproval} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/negotiate/:id" component={Negotiate} />
       <Route path="/chaperone-apply" component={ChaperoneApply} />

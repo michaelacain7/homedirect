@@ -370,6 +370,29 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Pre-Approval CTA for buyers without transactions */}
+      {!isSeller && allTransactions.length === 0 && (
+        <Card
+          className="mb-6 p-5 border-2 border-dashed border-primary/30 bg-primary/5 cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => setLocation("/pre-approval")}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                <CheckCircle2 className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold">Get Pre-Approved First</h2>
+                <p className="text-sm text-muted-foreground">
+                  Takes 5 minutes. Know your budget, strengthen your offers, and shop with confidence.
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="h-5 w-5 text-primary" />
+          </div>
+        </Card>
+      )}
+
       {/* Transaction Portal Banner */}
       {allTransactions.length > 0 && (
         <Card className="mb-6 p-6 bg-primary text-primary-foreground cursor-pointer hover:opacity-95 transition-opacity"
