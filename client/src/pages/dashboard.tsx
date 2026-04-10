@@ -370,13 +370,37 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Transaction Portal Banner */}
+      {allTransactions.length > 0 && (
+        <Card className="mb-6 p-6 bg-primary text-primary-foreground cursor-pointer hover:opacity-95 transition-opacity"
+          onClick={() => setLocation(`/transaction/${allTransactions[0].id}`)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center">
+                <FileText className="h-7 w-7" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Transaction Portal</h2>
+                <p className="text-sm text-primary-foreground/80">
+                  {allTransactions.length} active transaction{allTransactions.length > 1 ? "s" : ""} — View documents, track closing progress, and manage your deal
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="h-6 w-6" />
+          </div>
+        </Card>
+      )}
+
       {/* Stats Cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className="p-4" data-testid="stat-listings">
-          <Home className="mb-1 h-4 w-4 text-muted-foreground" />
-          <div className="text-xl font-bold">{myListings.length}</div>
-          <p className="text-xs text-muted-foreground">My Listings</p>
-        </Card>
+        {isSeller && (
+          <Card className="p-4" data-testid="stat-listings">
+            <Home className="mb-1 h-4 w-4 text-muted-foreground" />
+            <div className="text-xl font-bold">{myListings.length}</div>
+            <p className="text-xs text-muted-foreground">My Listings</p>
+          </Card>
+        )}
         <Card className="p-4" data-testid="stat-offers">
           <DollarSign className="mb-1 h-4 w-4 text-muted-foreground" />
           <div className="text-xl font-bold">{isSeller ? sellerOffers.length : myOffers.length}</div>

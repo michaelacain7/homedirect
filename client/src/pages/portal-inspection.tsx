@@ -540,6 +540,34 @@ export default function PortalInspection() {
                 </CardContent>
               </Card>
 
+              {/* AI Recommendations — at the top for visibility */}
+              <Card style={{ borderRadius: "14px" }} className="border-primary/20 bg-primary/5">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-primary" />
+                    AI Recommendation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm">{MOCK_ANALYSIS.aiRecommendation}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 p-3 rounded-xl bg-primary text-white text-center">
+                      <p className="text-xs opacity-80">Recommended Seller Credit</p>
+                      <p className="text-xl font-bold">{MOCK_ANALYSIS.creditTotal}</p>
+                    </div>
+                    {isBuyer && (
+                      <Button
+                        className="flex-shrink-0"
+                        style={{ backgroundColor: "hsl(160, 60%, 28%)" }}
+                        onClick={() => setShowRepairForm(true)}
+                      >
+                        <Wrench className="mr-1.5 h-4 w-4" /> Submit Repair Request
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Major Issues */}
               <Card style={{ borderRadius: "14px" }}>
                 <CardHeader className="pb-3">
@@ -602,34 +630,6 @@ export default function PortalInspection() {
                         <p className="text-xs text-muted-foreground">{item.cost}</p>
                       </div>
                     ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* AI Recommendations Panel */}
-              <Card style={{ borderRadius: "14px" }} className="border-primary/20 bg-primary/5">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Bot className="h-4 w-4 text-primary" />
-                    AI Recommendation
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm">{MOCK_ANALYSIS.aiRecommendation}</p>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 p-3 rounded-xl bg-primary text-white text-center">
-                      <p className="text-xs opacity-80">Recommended Seller Credit</p>
-                      <p className="text-xl font-bold">{MOCK_ANALYSIS.creditTotal}</p>
-                    </div>
-                    {isBuyer && (
-                      <Button
-                        className="flex-shrink-0"
-                        style={{ backgroundColor: "hsl(160, 60%, 28%)" }}
-                        onClick={() => setShowRepairForm(true)}
-                      >
-                        <Wrench className="mr-1.5 h-4 w-4" /> Submit Repair Request
-                      </Button>
-                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -1,6 +1,6 @@
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -178,7 +178,7 @@ interface ProfessionalAccessRecord {
   createdAt: string | null;
 }
 
-function InviteProfessionalSection({ txnId }: { txnId: number }) {
+function InviteProfessionalSection({ txnId, userRole }: { txnId: number; userRole?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [openType, setOpenType] = useState<string | null>(null);
@@ -229,17 +229,31 @@ function InviteProfessionalSection({ txnId }: { txnId: number }) {
     return <Badge variant="outline" className="text-xs">{s}</Badge>;
   };
 
+  const [showProfessionals, setShowProfessionals] = useState(false);
+  const invitedCount = professionals.filter(p => p.status !== "revoked").length;
+
   return (
     <div className="mt-6">
-      <div className="flex items-center gap-2 mb-3">
-        <Users className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-base font-semibold">Invite Professionals</h2>
-      </div>
-      <p className="text-xs text-muted-foreground mb-4">
+      <button
+        onClick={() => setShowProfessionals(!showProfessionals)}
+        className="w-full flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Invite Professionals</span>
+          {invitedCount > 0 && (
+            <Badge variant="secondary" className="text-xs">{invitedCount} invited</Badge>
+          )}
+        </div>
+        <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showProfessionals ? "rotate-90" : ""}`} />
+      </button>
+      {showProfessionals && (
+      <>
+      <p className="text-xs text-muted-foreground mt-3 mb-4">
         Give third-party professionals secure, login-free access to collaborate on this transaction.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {PRO_TYPES.map(({ value, label, icon: Icon, color, bg, border }) => {
+        {PRO_TYPES.filter(p => p.value !== "photographer" || userRole === "seller" || userRole === "admin").map(({ value, label, icon: Icon, color, bg, border }) => {
           const pros = getPros(value);
           const isOpen = openType === value;
           return (
@@ -376,6 +390,8 @@ function InviteProfessionalSection({ txnId }: { txnId: number }) {
           );
         })}
       </div>
+      </>
+      )}
     </div>
   );
 }
@@ -385,6 +401,8 @@ export default function TransactionHub() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  const [showChecklist, setShowChecklist] = useState(false);
 
   const { data: txn, isLoading } = useQuery<Transaction>({
     queryKey: ["/api/transactions", params?.id],
@@ -539,23 +557,29 @@ export default function TransactionHub() {
         </div>
       </Card>
 
-      {/* Checklist */}
+      {/* Checklist — Collapsible */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-base font-semibold">Your Closing Checklist</h2>
-            <p className="text-xs text-muted-foreground">
-              {completedItems} of {checklist.length} tasks complete
-              {checklist.length > 0 && ` (${checklistPct}%)`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-xs text-muted-foreground">{checklistPct}%</div>
-            <div className="w-20">
-              <Progress value={checklistPct} className="h-1.5" />
+        <button
+          onClick={() => setShowChecklist(!showChecklist)}
+          className="w-full flex items-center justify-between p-4 rounded-xl border hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            <div className="text-left">
+              <h2 className="text-sm font-semibold">Closing Checklist</h2>
+              <p className="text-xs text-muted-foreground">
+                {completedItems} of {checklist.length} complete ({checklistPct}%)
+              </p>
             </div>
           </div>
-        </div>
+          <div className="flex items-center gap-3">
+            <div className="w-24">
+              <Progress value={checklistPct} className="h-2" />
+            </div>
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showChecklist ? "rotate-90" : ""}`} />
+          </div>
+        </button>
+        {showChecklist && <div className="mt-3">
 
         {checklistLoading ? (
           <div className="space-y-2">
@@ -618,6 +642,7 @@ export default function TransactionHub() {
             ))}
           </div>
         )}
+        </div>}
       </div>
 
       {/* Portal Cards */}
@@ -661,7 +686,7 @@ export default function TransactionHub() {
 
       {/* Invite Professionals */}
       {(isBuyer || isSeller) && (
-        <InviteProfessionalSection txnId={txn.id} />
+        <InviteProfessionalSection txnId={txn.id} userRole={user?.role} />
       )}
 
       {/* Closing Prep Banner — shown when closing is within 7 days */}
