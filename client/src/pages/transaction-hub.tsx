@@ -67,6 +67,7 @@ const PORTAL_CARDS = [
     color: "text-blue-600",
     bg: "bg-blue-50",
     border: "border-blue-200",
+    roles: ["buyer", "seller"],
   },
   {
     key: "escrow",
@@ -76,6 +77,7 @@ const PORTAL_CARDS = [
     color: "text-emerald-600",
     bg: "bg-emerald-50",
     border: "border-emerald-200",
+    roles: ["buyer", "seller"],
   },
   {
     key: "lender",
@@ -85,6 +87,7 @@ const PORTAL_CARDS = [
     color: "text-purple-600",
     bg: "bg-purple-50",
     border: "border-purple-200",
+    roles: ["buyer"],
   },
   {
     key: "appraisal",
@@ -94,6 +97,7 @@ const PORTAL_CARDS = [
     color: "text-orange-600",
     bg: "bg-orange-50",
     border: "border-orange-200",
+    roles: ["buyer", "seller"],
   },
   {
     key: "title",
@@ -103,6 +107,7 @@ const PORTAL_CARDS = [
     color: "text-rose-600",
     bg: "bg-rose-50",
     border: "border-rose-200",
+    roles: ["buyer"],
   },
   {
     key: "insurance",
@@ -112,15 +117,7 @@ const PORTAL_CARDS = [
     color: "text-cyan-600",
     bg: "bg-cyan-50",
     border: "border-cyan-200",
-  },
-  {
-    key: "ai",
-    icon: MessageSquare,
-    title: "AI Assistant",
-    description: "Ask any question about your transaction",
-    color: "text-indigo-600",
-    bg: "bg-indigo-50",
-    border: "border-indigo-200",
+    roles: ["buyer"],
   },
 ];
 
@@ -144,7 +141,6 @@ function getPortalStatus(txn: Transaction, portalKey: string): "not_started" | "
         : "not_started";
     case "lender":
     case "insurance":
-    case "ai":
       return "in_progress";
     default:
       return "not_started";
@@ -649,12 +645,15 @@ export default function TransactionHub() {
       <div>
         <h2 className="text-base font-semibold mb-3">Your Transaction Portals</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {PORTAL_CARDS.map((portal) => {
+          {PORTAL_CARDS
+            .filter((portal) => {
+              const role = isBuyer ? "buyer" : "seller";
+              return portal.roles.includes(role);
+            })
+            .map((portal) => {
             const Icon = portal.icon;
-            const status = portal.key === "ai" ? "in_progress" : getPortalStatus(txn, portal.key);
-            const href = portal.key === "ai"
-              ? `/transaction/${params?.id}/inspection`
-              : `/transaction/${params?.id}/${portal.key}`;
+            const status = getPortalStatus(txn, portal.key);
+            const href = `/transaction/${params?.id}/${portal.key}`;
 
             return (
               <Card
