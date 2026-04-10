@@ -403,43 +403,28 @@ export default function Dashboard() {
               <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center">
                 <FileText className="h-7 w-7" />
               </div>
-              <div>
-                <h2 className="text-lg font-bold">Transaction Portal</h2>
-                <p className="text-sm text-primary-foreground/80">
-                  {allTransactions.length} active transaction{allTransactions.length > 1 ? "s" : ""} — View documents, track closing progress, and manage your deal
-                </p>
-              </div>
+              <h2 className="text-lg font-bold">Transaction Portal</h2>
             </div>
             <ArrowRight className="h-6 w-6" />
           </div>
         </Card>
       )}
 
-      {/* Stats Cards */}
+      {/* Stats Cards — seller only */}
+      {isSeller && (
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {isSeller && (
           <Card className="p-4" data-testid="stat-listings">
             <Home className="mb-1 h-4 w-4 text-muted-foreground" />
             <div className="text-xl font-bold">{myListings.length}</div>
             <p className="text-xs text-muted-foreground">My Listings</p>
           </Card>
-        )}
-        <Card className="p-4" data-testid="stat-offers">
-          <DollarSign className="mb-1 h-4 w-4 text-muted-foreground" />
-          <div className="text-xl font-bold">{isSeller ? sellerOffers.length : myOffers.length}</div>
-          <p className="text-xs text-muted-foreground">{isSeller ? "Received Offers" : "Active Offers"}</p>
-        </Card>
-        <Card className="p-4" data-testid="stat-walkthroughs">
-          <Eye className="mb-1 h-4 w-4 text-muted-foreground" />
-          <div className="text-xl font-bold">{myWalkthroughs.length}</div>
-          <p className="text-xs text-muted-foreground">Walkthroughs</p>
-        </Card>
-        <Card className="p-4" data-testid="stat-transactions">
-          <FileText className="mb-1 h-4 w-4 text-muted-foreground" />
-          <div className="text-xl font-bold">{allTransactions.length}</div>
-          <p className="text-xs text-muted-foreground">Transactions</p>
-        </Card>
+          <Card className="p-4" data-testid="stat-offers">
+            <DollarSign className="mb-1 h-4 w-4 text-muted-foreground" />
+            <div className="text-xl font-bold">{sellerOffers.length}</div>
+            <p className="text-xs text-muted-foreground">Received Offers</p>
+          </Card>
       </div>
+      )}
 
       <Tabs
         defaultValue={user.role === "chaperone" ? "gigs" : isSeller ? "seller-offers" : "offers"}
