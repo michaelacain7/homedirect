@@ -115,6 +115,14 @@ function seedDatabase() {
   const buyer1 = storage.createUser({ email: "mike@example.com", password: demoHash, fullName: "Michael Cain", phone: "813-555-0303", role: "buyer", location: "St. Petersburg, FL", bio: "Looking for the perfect family home." });
   const chaperone1 = storage.createUser({ email: "lisa@example.com", password: demoHash, fullName: "Lisa Rodriguez", phone: "813-555-0404", role: "chaperone", location: "Tampa, FL", bio: "Licensed realtor earning extra income as a walkthrough chaperone." });
 
+  // Create professional demo accounts (login with demo123)
+  const proInspector = storage.createUser({ email: "david@prohome.com", password: demoHash, fullName: "David Martinez", phone: "813-555-1001", role: "buyer", bio: "Licensed home inspector — ProHome Inspections" });
+  const proAppraiser = storage.createUser({ email: "jwalsh@metroappraisals.com", password: demoHash, fullName: "Jennifer Walsh", phone: "813-555-1002", role: "buyer", bio: "Certified residential appraiser — Metro Appraisals" });
+  const proLender = storage.createUser({ email: "mjohnson@firstfederal.com", password: demoHash, fullName: "Marcus Johnson", phone: "813-555-1003", role: "buyer", bio: "Mortgage loan officer — First Federal Mortgage" });
+  const proTitle = storage.createUser({ email: "maria@sunshinetitle.com", password: demoHash, fullName: "Maria Gonzalez", phone: "813-555-1004", role: "buyer", bio: "Closing agent — Sunshine Title Services" });
+  const proPhotographer = storage.createUser({ email: "alex@riveramedia.com", password: demoHash, fullName: "Alex Rivera", phone: "813-555-1005", role: "seller", bio: "Real estate photographer — Rivera Media" });
+  const proInsurer = storage.createUser({ email: "sthompson@flshield.com", password: demoHash, fullName: "Sarah Thompson", phone: "813-555-1006", role: "buyer", bio: "Insurance agent — FL Shield Insurance" });
+
   // Create demo listings
   const listings = [
     {
