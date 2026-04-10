@@ -277,13 +277,34 @@ export function generateFullQuestionnaire(
   for (const docMap of DOCUMENT_FIELDS) {
     const result = fillDocument(docMap.documentName, transactionId, existingResponses);
     for (const q of result.missingFields) {
-      // Filter by role — sellers answer seller questions, buyers answer buyer questions
+      // Filter strictly by role — buyers only see buyer fields, sellers only see seller fields
       const field = docMap.fields.find(f => f.key === q.key);
       if (!field) continue;
+
+      // Buyer-specific fields
+      const BUYER_FIELDS = new Set([
+        "buyerAddress", "vestingType", "lenderName", "loanAmount", "interestRate",
+        "termYears", "monthlyPayment", "firstPaymentDate", "buyerWaivesInspection",
+        "personalPropertyIncluded", "occupancyDate", "sellerConcessions",
+        "granteeAddress",
+      ]);
+      // Seller-specific fields
+      const SELLER_FIELDS = new Set([
+        "sellerAddress", "grantorAddress", "legalDescription", "parcelId",
+        "roofAge", "roofMaterial", "foundationIssues", "roofLeaks", "waterIntrusion",
+        "previousRepairs", "repairDetails", "hvacAge", "hvacIssues", "plumbingIssues",
+        "plumbingType", "electricalIssues", "waterHeaterAge",
+        "knownAsbestos", "knownLeadPaint", "knownMold", "undergroundTanks",
+        "sinkholeActivity", "floodDamage", "pendingLawsuits", "hoaViolations",
+        "easements", "zoningViolations", "additionalDisclosures",
+        "maritalStatus", "mortgagePayoff",
+        "leadPaintRecords",
+      ]);
+
       const isForRole =
-        field.source === "questionnaire" ||
-        (role === "buyer" && (field.source === "buyer" || field.category === "buyer_options")) ||
-        (role === "seller" && (field.source === "seller" || ["structural", "mechanical", "environmental", "legal", "disclosure"].includes(field.category)));
+        (role === "buyer" && BUYER_FIELDS.has(field.key)) ||
+        (role === "seller" && SELLER_FIELDS.has(field.key));
+
       if (isForRole && !allMissing.has(q.key)) {
         allMissing.set(q.key, q);
       }
