@@ -23,15 +23,21 @@ export function EarningsTab() {
     total: number; pending: number; paid: number; payouts: ChaperonePayout[];
   }>({
     queryKey: ["/api/chaperone/earnings", user?.id],
-    queryFn: () =>
-      user ? apiRequest("GET", `/api/chaperone/earnings/${user.id}`).then(r => r.json()) : null,
+    queryFn: async () => {
+      if (!user) return { total: 0, pending: 0, paid: 0, payouts: [] };
+      try { return await apiRequest("GET", `/api/chaperone/earnings/${user.id}`).then(r => r.json()); }
+      catch { return { total: 0, pending: 0, paid: 0, payouts: [] }; }
+    },
     enabled: !!user,
   });
 
   const { data: chaperoneApp } = useQuery<any>({
     queryKey: ["/api/chaperone/application", user?.id],
-    queryFn: () =>
-      user ? apiRequest("GET", `/api/chaperone/application/${user.id}`).then(r => r.json()) : null,
+    queryFn: async () => {
+      if (!user) return null;
+      try { return await apiRequest("GET", `/api/chaperone/application/${user.id}`).then(r => r.json()); }
+      catch { return null; }
+    },
     enabled: !!user,
   });
 
