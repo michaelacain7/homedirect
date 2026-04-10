@@ -400,6 +400,9 @@ export default function TransactionHub() {
 
   const [showChecklist, setShowChecklist] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showInfoNeeded, setShowInfoNeeded] = useState(true);
+  const [questionnaireAnswers, setQuestionnaireAnswers] = useState<Record<string, any>>({});
+  const [savingAnswers, setSavingAnswers] = useState(false);
 
   const { data: txn, isLoading } = useQuery<Transaction>({
     queryKey: ["/api/transactions", params?.id],
@@ -426,6 +429,21 @@ export default function TransactionHub() {
     queryKey: ["/api/documents/listing", txn?.listingId],
     queryFn: () => apiRequest("GET", `/api/documents/listing/${txn?.listingId}`).then((r) => r.json()),
     enabled: !!txn?.listingId,
+  });
+
+  // Fetch questionnaire (missing info the AI needs)
+  type QuestionnaireData = {
+    role: string;
+    categories: Record<string, Array<{ key: string; label: string; type: string; options?: string[]; helpText: string; required: boolean }>>;
+    totalQuestions: number;
+    answeredQuestions: number;
+    existingResponses: Record<string, any>;
+    isComplete: boolean;
+  };
+  const { data: questionnaire, refetch: refetchQuestionnaire } = useQuery<QuestionnaireData>({
+    queryKey: ["/api/transactions", params?.id, "questionnaire"],
+    queryFn: () => apiRequest("GET", `/api/transactions/${params?.id}/questionnaire`).then((r) => r.json()),
+    enabled: !!params?.id && !!user,
   });
 
   const updateItem = useMutation({
@@ -649,6 +667,129 @@ export default function TransactionHub() {
         )}
         </div>}
       </div>
+
+      {/* Information Needed — AI questionnaire */}
+      {questionnaire && questionnaire.totalQuestions > 0 && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowInfoNeeded(!showInfoNeeded)}
+            className="w-full flex items-center justify-between p-4 rounded-xl border border-amber-200 bg-amber-50/50 hover:bg-amber-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="text-left">
+                <h2 className="text-sm font-semibold text-amber-900">Information Needed</h2>
+                <p className="text-xs text-amber-700">
+                  Your AI agent needs {questionnaire.totalQuestions} piece{questionnaire.totalQuestions > 1 ? "s" : ""} of information to complete your paperwork
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-amber-100 text-amber-800 text-xs">{questionnaire.totalQuestions} remaining</Badge>
+              <ChevronRight className={`h-4 w-4 text-amber-600 transition-transform ${showInfoNeeded ? "rotate-90" : ""}`} />
+            </div>
+          </button>
+          {showInfoNeeded && (
+            <div className="mt-3 space-y-4">
+              {Object.entries(questionnaire.categories).map(([category, questions]) => (
+                <Card key={category} className="border-amber-100">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wider text-amber-700">
+                      {category.replace(/_/g, " ")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {questions.map((q) => (
+                      <div key={q.key} className="space-y-1.5">
+                        <Label className="text-sm font-medium">{q.label} {q.required && <span className="text-red-500">*</span>}</Label>
+                        <p className="text-[11px] text-muted-foreground">{q.helpText}</p>
+                        {q.type === "boolean" ? (
+                          <div className="flex gap-3">
+                            <Button
+                              size="sm"
+                              variant={questionnaireAnswers[q.key] === true ? "default" : "outline"}
+                              className="h-8 text-xs"
+                              onClick={() => setQuestionnaireAnswers(prev => ({ ...prev, [q.key]: true }))}
+                            >
+                              Yes
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={questionnaireAnswers[q.key] === false ? "default" : "outline"}
+                              className="h-8 text-xs"
+                              onClick={() => setQuestionnaireAnswers(prev => ({ ...prev, [q.key]: false }))}
+                            >
+                              No
+                            </Button>
+                          </div>
+                        ) : q.type === "select" && q.options ? (
+                          <Select
+                            value={questionnaireAnswers[q.key] || ""}
+                            onValueChange={(v) => setQuestionnaireAnswers(prev => ({ ...prev, [q.key]: v }))}
+                          >
+                            <SelectTrigger className="h-9 text-sm">
+                              <SelectValue placeholder="Select..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {q.options.map(opt => (
+                                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            type={q.type === "number" ? "number" : q.type === "date" ? "date" : "text"}
+                            placeholder={q.type === "number" ? "0" : q.type === "date" ? "" : "Enter..."}
+                            value={questionnaireAnswers[q.key] || ""}
+                            onChange={(e) => setQuestionnaireAnswers(prev => ({ ...prev, [q.key]: e.target.value }))}
+                            className="h-9 text-sm"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
+              <Button
+                className="w-full"
+                disabled={savingAnswers || Object.keys(questionnaireAnswers).length === 0}
+                onClick={async () => {
+                  setSavingAnswers(true);
+                  try {
+                    await apiRequest("POST", `/api/transactions/${params?.id}/questionnaire`, {
+                      responses: questionnaireAnswers,
+                      completedSections: Object.keys(questionnaire.categories),
+                    });
+                    setQuestionnaireAnswers({});
+                    refetchQuestionnaire();
+                    queryClient.invalidateQueries({ queryKey: ["/api/documents/listing", txn?.listingId] });
+                  } catch {}
+                  setSavingAnswers(false);
+                }}
+              >
+                {savingAnswers ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+                ) : (
+                  <><CheckCircle2 className="mr-2 h-4 w-4" /> Save & Update Documents</>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* All info complete banner */}
+      {questionnaire && questionnaire.isComplete && questionnaire.totalQuestions === 0 && documents.length > 0 && (
+        <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 flex items-center gap-3">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-emerald-900">All information collected</p>
+            <p className="text-xs text-emerald-700">Your AI agent has everything needed to complete your documents. Review and sign below.</p>
+          </div>
+        </div>
+      )}
 
       {/* Documents Section */}
       {documents.length > 0 && (

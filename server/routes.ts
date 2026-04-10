@@ -637,7 +637,8 @@ function seedDatabase() {
 
   // ── Seed Questionnaire Responses (pre-filled buyer/seller data) ──
   if (storage.createQuestionnaireResponse) {
-    // Buyer questionnaire responses
+    // Buyer questionnaire responses — intentionally INCOMPLETE to demo "Information Needed"
+    // Missing: vestingType, lenderName, interestRate, monthlyPayment, firstPaymentDate
     storage.createQuestionnaireResponse({
       transactionId: txn.id,
       userId: buyer1.id,
@@ -646,19 +647,20 @@ function seedDatabase() {
         buyerAddress: "4521 Gulf Blvd, St. Pete Beach, FL 33706",
         personalPropertyIncluded: "Refrigerator, washer, dryer, and patio furniture",
         occupancyDate: closingDateDemo,
-        vestingType: "Sole ownership",
-        lenderName: "First Federal Mortgage",
+        // vestingType: intentionally missing — AI will ask
+        // lenderName: intentionally missing — AI will ask
         loanAmount: salePrice * 0.8,
-        interestRate: 6.875,
+        // interestRate: intentionally missing — AI will ask
         termYears: 30,
-        monthlyPayment: 2942,
-        firstPaymentDate: (() => { const d = new Date(closingDateDemo); d.setDate(1); d.setMonth(d.getMonth() + 2); return d.toISOString().split("T")[0]; })(),
+        // monthlyPayment: intentionally missing — AI will ask
+        // firstPaymentDate: intentionally missing — AI will ask
         buyerWaivesInspection: false,
       }),
-      completedSections: JSON.stringify(["parties", "financial", "timeline", "buyer_options"]),
+      completedSections: JSON.stringify(["parties"]),
     });
 
-    // Seller questionnaire responses
+    // Seller questionnaire responses — intentionally INCOMPLETE for some disclosure items
+    // Missing: maritalStatus, mortgagePayoff, knownLeadPaint, sinkholeActivity
     storage.createQuestionnaireResponse({
       transactionId: txn.id,
       userId: seller2.id,
@@ -681,20 +683,20 @@ function seedDatabase() {
         electricalIssues: true,
         waterHeaterAge: 4,
         knownAsbestos: false,
-        knownLeadPaint: false,
+        // knownLeadPaint: intentionally missing — AI will ask (pre-1978 home)
         knownMold: false,
         undergroundTanks: false,
-        sinkholeActivity: false,
+        // sinkholeActivity: intentionally missing — AI will ask (Pinellas County)
         floodDamage: false,
         pendingLawsuits: false,
         hoaViolations: false,
         easements: false,
         zoningViolations: false,
         additionalDisclosures: "Electrical panel has double-tapped breakers noted in previous inspection. Quote obtained for repair: $1,650.",
-        maritalStatus: "Divorced",
-        mortgagePayoff: 185000,
+        // maritalStatus: intentionally missing — needed for deed
+        // mortgagePayoff: intentionally missing — needed for closing statement
       }),
-      completedSections: JSON.stringify(["parties", "property", "structural", "mechanical", "environmental", "legal", "financial"]),
+      completedSections: JSON.stringify(["parties", "property", "structural", "mechanical"]),
     });
     console.log("[Seed] Created buyer and seller questionnaire responses");
   }
