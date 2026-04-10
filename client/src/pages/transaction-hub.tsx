@@ -70,6 +70,16 @@ const PORTAL_CARDS = [
     roles: ["buyer", "seller"],
   },
   {
+    key: "staging",
+    icon: Home,
+    title: "Home Staging",
+    description: "Staging plan, virtual staging, and scheduling",
+    color: "text-pink-600",
+    bg: "bg-pink-50",
+    border: "border-pink-200",
+    roles: ["seller"],
+  },
+  {
     key: "escrow",
     icon: Shield,
     title: "Escrow & Closing",
@@ -158,7 +168,8 @@ const PRO_TYPES = [
   { value: "appraiser", label: "Appraiser", icon: BarChart3, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
   { value: "lender", label: "Lender", icon: Building2, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
   { value: "title", label: "Title Company", icon: FileText, color: "text-rose-600", bg: "bg-rose-50", border: "border-rose-200" },
-  { value: "photographer", label: "Photographer", icon: Camera, color: "text-pink-600", bg: "bg-pink-50", border: "border-pink-200" },
+  { value: "stager", label: "Home Stager", icon: Home, color: "text-pink-600", bg: "bg-pink-50", border: "border-pink-200" },
+  { value: "photographer", label: "Photographer", icon: Camera, color: "text-fuchsia-600", bg: "bg-fuchsia-50", border: "border-fuchsia-200" },
   { value: "insurer", label: "Home Insurer", icon: Shield, color: "text-cyan-600", bg: "bg-cyan-50", border: "border-cyan-200" },
 ];
 
@@ -249,7 +260,7 @@ function InviteProfessionalSection({ txnId, userRole }: { txnId: number; userRol
         Give third-party professionals secure, login-free access to collaborate on this transaction.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {PRO_TYPES.filter(p => p.value !== "photographer" || userRole === "seller" || userRole === "admin").map(({ value, label, icon: Icon, color, bg, border }) => {
+        {PRO_TYPES.filter(p => !["photographer", "stager"].includes(p.value) || userRole === "seller" || userRole === "admin").map(({ value, label, icon: Icon, color, bg, border }) => {
           const pros = getPros(value);
           const isOpen = openType === value;
           return (
